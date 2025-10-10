@@ -219,7 +219,7 @@ app.post('/api/admin/revoke-premium', async (req, res) => {
   }
 });
 
-// Enhanced HTML Admin Dashboard with Full Functionality
+// Enhanced HTML Admin Dashboard with Navy Blue & Yellow Theme
 app.get('/api/admin/dashboard', async (req, res) => {
   try {
     console.log('📊 Admin: Generating enhanced dashboard HTML');
@@ -301,33 +301,34 @@ app.get('/api/admin/dashboard', async (req, res) => {
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
-                background: linear(135deg, #667eea 0%, #764ba2 100%);
+                background: linear(135deg, #0a1128 0%, #1a237e 100%);
                 min-height: 100vh;
                 padding: 20px;
             }
             .dashboard {
                 max-width: 1400px;
                 margin: 0 auto;
-                background: rgba(255, 255, 255, 0.95);
+                background: rgba(255, 255, 255, 0.98);
                 backdrop-filter: blur(10px);
                 padding: 40px;
                 border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+                border: 1px solid rgba(255, 255, 255, 0.3);
             }
             .header {
                 text-align: center;
                 margin-bottom: 40px;
             }
             .header h1 {
-                color: #2d3748;
+                color: #0a1128;
                 font-size: 2.5em;
                 margin-bottom: 10px;
-                background: linear(135deg, #667eea, #764ba2);
+                background: linear(135deg, #0a1128, #ffd700);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
             }
             .header p {
-                color: #718096;
+                color: #666;
                 font-size: 1.1em;
             }
             .controls {
@@ -344,10 +345,12 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 border-radius: 10px;
                 font-size: 1em;
                 transition: border-color 0.3s ease;
+                background: white;
             }
             .search-box:focus {
                 outline: none;
-                border-color: #667eea;
+                border-color: #ffd700;
+                box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
             }
             .filter-buttons {
                 display: flex;
@@ -355,17 +358,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
             }
             .filter-btn {
                 padding: 12px 20px;
-                border: 2px solid #e2e8f0;
+                border: 2px solid #0a1128;
                 background: white;
+                color: #0a1128;
                 border-radius: 10px;
                 cursor: pointer;
                 transition: all 0.3s ease;
                 font-weight: 600;
             }
             .filter-btn:hover, .filter-btn.active {
-                background: #667eea;
-                color: white;
-                border-color: #667eea;
+                background: #0a1128;
+                color: #ffd700;
+                border-color: #0a1128;
             }
             .stats {
                 display: grid;
@@ -378,25 +382,26 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 padding: 30px 25px;
                 border-radius: 15px;
                 text-align: center;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.08);
-                border: 1px solid rgba(255,255,255,0.2);
+                box-shadow: 0 8px 25px rgba(10, 17, 40, 0.1);
+                border: 2px solid #0a1128;
                 transition: transform 0.3s ease, box-shadow 0.3s ease;
                 cursor: pointer;
             }
             .stat-card:hover {
                 transform: translateY(-5px);
-                box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+                box-shadow: 0 15px 35px rgba(10, 17, 40, 0.2);
+                border-color: #ffd700;
             }
             .stat-number {
                 font-size: 3em;
                 font-weight: 800;
                 margin-bottom: 10px;
-                background: linear(135deg, #667eea, #764ba2);
+                background: linear(135deg, #0a1128, #ffd700);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
             }
             .stat-label {
-                color: #718096;
+                color: #666;
                 font-size: 1em;
                 font-weight: 600;
                 text-transform: uppercase;
@@ -406,7 +411,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 background: white;
                 border-radius: 15px;
                 overflow: hidden;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+                box-shadow: 0 8px 25px rgba(10, 17, 40, 0.1);
+                border: 2px solid #0a1128;
                 overflow-x: auto;
             }
             table {
@@ -415,8 +421,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 min-width: 800px;
             }
             th {
-                background: linear(135deg, #667eea, #764ba2);
-                color: white;
+                background: linear(135deg, #0a1128, #1a237e);
+                color: #ffd700;
                 padding: 20px 15px;
                 text-align: left;
                 font-weight: 600;
@@ -426,7 +432,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
             }
             td {
                 padding: 18px 15px;
-                border-bottom: 1px solid #f7fafc;
+                border-bottom: 1px solid #f1f5f9;
             }
             tr:last-child td {
                 border-bottom: none;
@@ -442,23 +448,26 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .user-id {
                 font-family: 'Monaco', 'Consolas', monospace;
                 font-size: 0.9em;
-                color: #4a5568;
+                color: #0a1128;
+                font-weight: 600;
             }
             .user-email {
                 font-size: 0.8em;
-                color: #718096;
+                color: #666;
             }
             .date {
-                color: #2d3748;
+                color: #0a1128;
                 font-weight: 500;
             }
             .days {
                 font-weight: 600;
                 font-size: 1.1em;
+                color: #0a1128;
             }
             .warning-text {
-                color: #e53e3e;
+                color: #dc2626;
                 animation: pulse 2s infinite;
+                font-weight: 700;
             }
             .status {
                 display: inline-flex;
@@ -470,16 +479,19 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 font-size: 0.9em;
             }
             .status.active {
-                background: #c6f6d5;
-                color: #276749;
+                background: #dcfce7;
+                color: #166534;
+                border: 1px solid #bbf7d0;
             }
             .status.warning {
-                background: #fed7d7;
-                color: #c53030;
+                background: #fef3c7;
+                color: #92400e;
+                border: 1px solid #fde68a;
             }
             .status.expired {
-                background: #fed7d7;
-                color: #c53030;
+                background: #fee2e2;
+                color: #991b1b;
+                border: 1px solid #fecaca;
             }
             .actions {
                 display: flex;
@@ -496,20 +508,24 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 transition: all 0.3s ease;
             }
             .btn-extend {
-                background: #bee3f8;
-                color: #2b6cb0;
+                background: #ffd700;
+                color: #0a1128;
+                border: 1px solid #e6c200;
             }
             .btn-extend:hover {
-                background: #90cdf4;
+                background: #e6c200;
                 transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3);
             }
             .btn-revoke {
-                background: #fed7d7;
-                color: #c53030;
+                background: #0a1128;
+                color: #ffd700;
+                border: 1px solid #0a1128;
             }
             .btn-revoke:hover {
-                background: #feb2b2;
+                background: #1a237e;
                 transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(10, 17, 40, 0.3);
             }
             .notification {
                 position: fixed;
@@ -525,12 +541,14 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 transition: all 0.3s ease;
             }
             .notification.success {
-                background: #48bb78;
+                background: #0a1128;
+                color: #ffd700;
                 opacity: 1;
                 transform: translateX(0);
+                border: 2px solid #ffd700;
             }
             .notification.error {
-                background: #f56565;
+                background: #dc2626;
                 opacity: 1;
                 transform: translateX(0);
             }
@@ -542,8 +560,17 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .last-updated {
                 text-align: center;
                 margin-top: 30px;
-                color: #a0aec0;
+                color: #666;
                 font-size: 0.9em;
+            }
+            .last-updated a {
+                color: #0a1128;
+                text-decoration: none;
+                font-weight: 600;
+            }
+            .last-updated a:hover {
+                color: #ffd700;
+                text-decoration: underline;
             }
             @media (max-width: 768px) {
                 body { padding: 10px; }
