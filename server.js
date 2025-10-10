@@ -74,6 +74,53 @@ async function checkExpiredSubscriptions() {
   }
 }
 
+// Function to get user email from Auth
+async function getUserEmail(userId) {
+  try {
+    const { data: authUser, error } = await supabase.auth.admin.getUserById(userId);
+    if (!error && authUser) {
+      return authUser.user.email;
+    }
+    return 'Email not found';
+  } catch (error) {
+    return 'Error fetching email';
+  }
+}
+
+// Function to manually extend subscription
+async function extendSubscription(userId, days = 30) {
+  try {
+    const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supabase
+      .from('user_scripts')
+      .update({
+        premium_expires_at: newExpiry,
+        is_premium: true
+      })
+      .eq('user_id', userId);
+
+    return { success: !error, error };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
+// Function to revoke premium access
+async function revokePremium(userId) {
+  try {
+    const { error } = await supabase
+      .from('user_scripts')
+      .update({
+        is_premium: false
+      })
+      .eq('user_id', userId);
+
+    return { success: !error, error };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
 app.post('/api/webhook', async (req, res) => {
   console.log('🛒 Webhook received from WooCommerce');
   
@@ -135,11 +182,49 @@ app.post('/api/check-expirations', async (req, res) => {
   res.json({ success: true, message: 'Expiration check completed' });
 });
 
-// Admin dashboard endpoints
-app.get('/api/admin/premium-users', async (req, res) => {
+// Admin action endpoints
+app.post('/api/admin/extend-subscription', async (req, res) => {
   try {
-    console.log('👑 Admin: Fetching premium users');
+    const { userId, days } = req.body;
+    console.log(`⏰ Extending subscription for ${userId} by ${days} days`);
     
+    const result = await extendSubscription(userId, days);
+    
+    if (result.success) {
+      res.json({ success: true, message: `Subscription extended by ${days} days` });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('❌ Extend subscription error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.post('/api/admin/revoke-premium', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    console.log(`🚫 Revoking premium access for ${userId}`);
+    
+    const result = await revokePremium(userId);
+    
+    if (result.success) {
+      res.json({ success: true, message: 'Premium access revoked' });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('❌ Revoke premium error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// Enhanced HTML Admin Dashboard with Full Functionality
+app.get('/api/admin/dashboard', async (req, res) => {
+  try {
+    console.log('📊 Admin: Generating enhanced dashboard HTML');
+    
+    // Get premium users data
     const { data: premiumUsers, error } = await supabase
       .from('user_scripts')
       .select('*')
@@ -148,81 +233,482 @@ app.get('/api/admin/premium-users', async (req, res) => {
 
     if (error) throw error;
 
-    // Count days remaining for each user
-    const usersWithDetails = premiumUsers.map(user => {
+    // Calculate stats
+    const now = new Date();
+    const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    
+    const expiringSoon = premiumUsers.filter(user => {
       const expires = new Date(user.premium_expires_at);
-      const now = new Date();
+      return expires > now && expires < soon;
+    });
+
+    const expiredButActive = premiumUsers.filter(user => {
+      const expires = new Date(user.premium_expires_at);
+      return expires < now;
+    });
+
+    // Get emails for all users
+    const usersWithEmails = await Promise.all(
+      premiumUsers.map(async (user) => {
+        const email = await getUserEmail(user.user_id);
+        return { ...user, email };
+      })
+    );
+
+    // Generate enhanced HTML
+    const userRows = usersWithEmails.map(user => {
+      const expires = new Date(user.premium_expires_at);
       const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+      const status = daysRemaining > 0 ? 'Active' : 'Expired';
+      const statusClass = daysRemaining > 0 ? (daysRemaining <= 7 ? 'warning' : 'active') : 'expired';
+      const statusIcon = daysRemaining > 0 ? (daysRemaining <= 7 ? '⚠️' : '✅') : '❌';
       
-      return {
-        user_id: user.user_id,
-        is_premium: user.is_premium,
-        premium_expires_at: user.premium_expires_at,
-        days_remaining: daysRemaining > 0 ? daysRemaining : 0,
-        status: daysRemaining > 0 ? 'Active' : 'Expired'
-      };
-    });
+      return `
+        <tr class="${statusClass}" data-user-id="${user.user_id}" data-days-remaining="${daysRemaining}">
+          <td>
+            <div class="user-info">
+              <div class="user-id">${user.user_id.substring(0, 12)}...</div>
+              <div class="user-email">${user.email}</div>
+            </div>
+          </td>
+          <td><div class="date">${expires.toLocaleDateString()}</div></td>
+          <td><div class="days ${daysRemaining <= 7 ? 'warning-text' : ''}">${daysRemaining} days</div></td>
+          <td><div class="status ${statusClass}">${statusIcon} ${status}</div></td>
+          <td>
+            <div class="actions">
+              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 30)" title="Extend 30 days">
+                ⏰ +30d
+              </button>
+              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 7)" title="Extend 7 days">
+                ⏰ +7d
+              </button>
+              <button class="btn-revoke" onclick="revokePremium('${user.user_id}')" title="Revoke Premium">
+                🚫 Revoke
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
-    res.json({
-      success: true,
-      total_premium_users: premiumUsers.length,
-      users: usersWithDetails
-    });
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>🎨 Inkwell Premium Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+                font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+                background: linear(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            .dashboard {
+                max-width: 1400px;
+                margin: 0 auto;
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(10px);
+                padding: 40px;
+                border-radius: 20px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 40px;
+            }
+            .header h1 {
+                color: #2d3748;
+                font-size: 2.5em;
+                margin-bottom: 10px;
+                background: linear(135deg, #667eea, #764ba2);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            .header p {
+                color: #718096;
+                font-size: 1.1em;
+            }
+            .controls {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 30px;
+                flex-wrap: wrap;
+            }
+            .search-box {
+                flex: 1;
+                min-width: 300px;
+                padding: 12px 20px;
+                border: 2px solid #e2e8f0;
+                border-radius: 10px;
+                font-size: 1em;
+                transition: border-color 0.3s ease;
+            }
+            .search-box:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+            .filter-buttons {
+                display: flex;
+                gap: 10px;
+            }
+            .filter-btn {
+                padding: 12px 20px;
+                border: 2px solid #e2e8f0;
+                background: white;
+                border-radius: 10px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                font-weight: 600;
+            }
+            .filter-btn:hover, .filter-btn.active {
+                background: #667eea;
+                color: white;
+                border-color: #667eea;
+            }
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 25px;
+                margin-bottom: 40px;
+            }
+            .stat-card {
+                background: white;
+                padding: 30px 25px;
+                border-radius: 15px;
+                text-align: center;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+                border: 1px solid rgba(255,255,255,0.2);
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+                cursor: pointer;
+            }
+            .stat-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+            }
+            .stat-number {
+                font-size: 3em;
+                font-weight: 800;
+                margin-bottom: 10px;
+                background: linear(135deg, #667eea, #764ba2);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            .stat-label {
+                color: #718096;
+                font-size: 1em;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .users-table {
+                background: white;
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+                overflow-x: auto;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 800px;
+            }
+            th {
+                background: linear(135deg, #667eea, #764ba2);
+                color: white;
+                padding: 20px 15px;
+                text-align: left;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                font-size: 0.9em;
+            }
+            td {
+                padding: 18px 15px;
+                border-bottom: 1px solid #f7fafc;
+            }
+            tr:last-child td {
+                border-bottom: none;
+            }
+            tr:hover {
+                background: #f8fafc;
+            }
+            .user-info {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .user-id {
+                font-family: 'Monaco', 'Consolas', monospace;
+                font-size: 0.9em;
+                color: #4a5568;
+            }
+            .user-email {
+                font-size: 0.8em;
+                color: #718096;
+            }
+            .date {
+                color: #2d3748;
+                font-weight: 500;
+            }
+            .days {
+                font-weight: 600;
+                font-size: 1.1em;
+            }
+            .warning-text {
+                color: #e53e3e;
+                animation: pulse 2s infinite;
+            }
+            .status {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-weight: 600;
+                font-size: 0.9em;
+            }
+            .status.active {
+                background: #c6f6d5;
+                color: #276749;
+            }
+            .status.warning {
+                background: #fed7d7;
+                color: #c53030;
+            }
+            .status.expired {
+                background: #fed7d7;
+                color: #c53030;
+            }
+            .actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .btn-extend, .btn-revoke {
+                padding: 6px 12px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.8em;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+            .btn-extend {
+                background: #bee3f8;
+                color: #2b6cb0;
+            }
+            .btn-extend:hover {
+                background: #90cdf4;
+                transform: translateY(-2px);
+            }
+            .btn-revoke {
+                background: #fed7d7;
+                color: #c53030;
+            }
+            .btn-revoke:hover {
+                background: #feb2b2;
+                transform: translateY(-2px);
+            }
+            .notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 25px;
+                border-radius: 10px;
+                color: white;
+                font-weight: 600;
+                z-index: 1000;
+                opacity: 0;
+                transform: translateX(100px);
+                transition: all 0.3s ease;
+            }
+            .notification.success {
+                background: #48bb78;
+                opacity: 1;
+                transform: translateX(0);
+            }
+            .notification.error {
+                background: #f56565;
+                opacity: 1;
+                transform: translateX(0);
+            }
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.7; }
+                100% { opacity: 1; }
+            }
+            .last-updated {
+                text-align: center;
+                margin-top: 30px;
+                color: #a0aec0;
+                font-size: 0.9em;
+            }
+            @media (max-width: 768px) {
+                body { padding: 10px; }
+                .dashboard { padding: 20px; }
+                .header h1 { font-size: 2em; }
+                .stat-number { font-size: 2.5em; }
+                th, td { padding: 12px 8px; }
+                .controls { flex-direction: column; }
+                .search-box { min-width: auto; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="dashboard">
+            <div class="header">
+                <h1>🎨 Inkwell Premium Dashboard</h1>
+                <p>Manage and monitor your premium subscribers</p>
+            </div>
+            
+            <div class="controls">
+                <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search by user ID or email..." onkeyup="filterTable()">
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterTable('all')">All</button>
+                    <button class="filter-btn" onclick="filterTable('active')">Active</button>
+                    <button class="filter-btn" onclick="filterTable('warning')">Expiring Soon</button>
+                    <button class="filter-btn" onclick="filterTable('expired')">Expired</button>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card" onclick="filterTable('all')">
+                    <div class="stat-number">${premiumUsers.length}</div>
+                    <div class="stat-label">Total Premium Users</div>
+                </div>
+                <div class="stat-card" onclick="filterTable('warning')">
+                    <div class="stat-number">${expiringSoon.length}</div>
+                    <div class="stat-label">Expiring Soon (7 days)</div>
+                </div>
+                <div class="stat-card" onclick="filterTable('expired')">
+                    <div class="stat-number">${expiredButActive.length}</div>
+                    <div class="stat-label">Expired But Active</div>
+                </div>
+            </div>
+            
+            <div class="users-table">
+                <table id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>User Info</th>
+                            <th>Expires On</th>
+                            <th>Days Left</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${userRows}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="last-updated">
+                Last updated: ${now.toLocaleString()} | 
+                <a href="#" onclick="location.reload()">🔄 Refresh</a> | 
+                <a href="/api/check-expirations" target="_blank">⏰ Check Expirations</a>
+            </div>
+        </div>
+
+        <div id="notification" class="notification"></div>
+
+        <script>
+            function filterTable(filter = 'all') {
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                const rows = document.querySelectorAll('#usersTable tbody tr');
+                const filterButtons = document.querySelectorAll('.filter-btn');
+                
+                // Update active filter button
+                filterButtons.forEach(btn => btn.classList.remove('active'));
+                event?.target.classList.add('active');
+                
+                rows.forEach(row => {
+                    const userId = row.getAttribute('data-user-id').toLowerCase();
+                    const daysRemaining = parseInt(row.getAttribute('data-days-remaining'));
+                    const email = row.querySelector('.user-email').textContent.toLowerCase();
+                    const text = userId + ' ' + email;
+                    
+                    let statusMatch = true;
+                    if (filter === 'active') statusMatch = daysRemaining > 7;
+                    else if (filter === 'warning') statusMatch = daysRemaining <= 7 && daysRemaining > 0;
+                    else if (filter === 'expired') statusMatch = daysRemaining <= 0;
+                    
+                    const searchMatch = text.includes(searchTerm);
+                    
+                    row.style.display = (statusMatch && searchMatch) ? '' : 'none';
+                });
+            }
+
+            function showNotification(message, type = 'success') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.className = 'notification ' + type;
+                
+                setTimeout(() => {
+                    notification.className = 'notification';
+                }, 3000);
+            }
+
+            async function extendSubscription(userId, days) {
+                if (!confirm('Extend subscription for ' + days + ' days?')) return;
+                
+                try {
+                    const response = await fetch('/api/admin/extend-subscription', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, days })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showNotification('✅ Subscription extended by ' + days + ' days!');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showNotification('❌ Error: ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    showNotification('❌ Network error', 'error');
+                }
+            }
+
+            async function revokePremium(userId) {
+                if (!confirm('Revoke premium access for this user?')) return;
+                
+                try {
+                    const response = await fetch('/api/admin/revoke-premium', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showNotification('✅ Premium access revoked!');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showNotification('❌ Error: ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    showNotification('❌ Network error', 'error');
+                }
+            }
+
+            // Initialize search
+            document.getElementById('searchInput').addEventListener('input', filterTable);
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
     
   } catch (error) {
-    console.error('❌ Admin error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get dashboard statistics
-app.get('/api/admin/stats', async (req, res) => {
-  try {
-    console.log('📊 Admin: Fetching dashboard stats');
-    
-    // Get total premium users
-    const { data: premiumUsers, error: premiumError } = await supabase
-      .from('user_scripts')
-      .select('user_id')
-      .eq('is_premium', true);
-
-    if (premiumError) throw premiumError;
-
-    // Get expiring soon (within 7 days)
-    const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const now = new Date().toISOString();
-    
-    const { data: expiringSoon, error: expiringError } = await supabase
-      .from('user_scripts')
-      .select('user_id')
-      .eq('is_premium', true)
-      .lt('premium_expires_at', soon)
-      .gt('premium_expires_at', now);
-
-    if (expiringError) throw expiringError;
-
-    // Get expired users
-    const { data: expiredUsers, error: expiredError } = await supabase
-      .from('user_scripts')
-      .select('user_id')
-      .eq('is_premium', true)
-      .lt('premium_expires_at', now);
-
-    if (expiredError) throw expiredError;
-
-    res.json({
-      success: true,
-      stats: {
-        total_premium_users: premiumUsers.length,
-        expiring_soon: expiringSoon.length,
-        expired_but_active: expiredUsers.length,
-        last_updated: new Date().toISOString()
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Admin stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Dashboard error:', error);
+    res.status(500).send('<h1>Error loading dashboard</h1><p>Please try again later.</p>');
   }
 });
 
@@ -236,5 +722,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📋 Webhook endpoint: http://localhost:3000/api/webhook`);
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
-  console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/stats`);
+  console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
 });
