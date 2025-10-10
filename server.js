@@ -219,7 +219,7 @@ app.post('/api/admin/revoke-premium', async (req, res) => {
   }
 });
 
-// Enhanced HTML Admin Dashboard with Navy Blue & Yellow Theme
+// Enhanced HTML Admin Dashboard with Dark Navy Blue Background
 app.get('/api/admin/dashboard', async (req, res) => {
   try {
     console.log('📊 Admin: Generating enhanced dashboard HTML');
@@ -301,34 +301,33 @@ app.get('/api/admin/dashboard', async (req, res) => {
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
-                background: linear(135deg, #0a1128 0%, #1a237e 100%);
+                background: #0a1128;
                 min-height: 100vh;
                 padding: 20px;
+                color: white;
             }
             .dashboard {
                 max-width: 1400px;
                 margin: 0 auto;
-                background: dark navy blue;
+                background: rgba(13, 17, 40, 0.95);
                 backdrop-filter: blur(10px);
                 padding: 40px;
-                border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 15px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                border: 1px solid rgba(255, 215, 0, 0.2);
             }
             .header {
                 text-align: center;
                 margin-bottom: 40px;
             }
             .header h1 {
-                color: #0a1128;
+                color: #ffd700;
                 font-size: 2.5em;
                 margin-bottom: 10px;
-                background: linear(135deg, #0a1128, #ffd700);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             }
             .header p {
-                color: #666;
+                color: #a0aec0;
                 font-size: 1.1em;
             }
             .controls {
@@ -341,16 +340,20 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 flex: 1;
                 min-width: 300px;
                 padding: 12px 20px;
-                border: 2px solid #e2e8f0;
+                border: 2px solid #2d3748;
                 border-radius: 10px;
                 font-size: 1em;
-                transition: border-color 0.3s ease;
-                background: white;
+                transition: all 0.3s ease;
+                background: #1a202c;
+                color: white;
             }
             .search-box:focus {
                 outline: none;
                 border-color: #ffd700;
                 box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
+            }
+            .search-box::placeholder {
+                color: #a0aec0;
             }
             .filter-buttons {
                 display: flex;
@@ -358,18 +361,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
             }
             .filter-btn {
                 padding: 12px 20px;
-                border: 2px solid #0a1128;
-                background: white;
-                color: #0a1128;
+                border: 2px solid #2d3748;
+                background: #1a202c;
+                color: #a0aec0;
                 border-radius: 10px;
                 cursor: pointer;
                 transition: all 0.3s ease;
                 font-weight: 600;
             }
             .filter-btn:hover, .filter-btn.active {
-                background: #0a1128;
-                color: #ffd700;
-                border-color: #0a1128;
+                background: #ffd700;
+                color: #0a1128;
+                border-color: #ffd700;
             }
             .stats {
                 display: grid;
@@ -378,41 +381,39 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 margin-bottom: 40px;
             }
             .stat-card {
-                background: white;
+                background: #1a202c;
                 padding: 30px 25px;
                 border-radius: 15px;
                 text-align: center;
-                box-shadow: 0 8px 25px rgba(10, 17, 40, 0.1);
-                border: 2px solid #0a1128;
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+                border: 2px solid #2d3748;
+                transition: all 0.3s ease;
                 cursor: pointer;
             }
             .stat-card:hover {
                 transform: translateY(-5px);
-                box-shadow: 0 15px 35px rgba(10, 17, 40, 0.2);
+                box-shadow: 0 15px 35px rgba(255, 215, 0, 0.2);
                 border-color: #ffd700;
             }
             .stat-number {
                 font-size: 3em;
                 font-weight: 800;
                 margin-bottom: 10px;
-                background: linear(135deg, #0a1128, #ffd700);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
+                color: #ffd700;
             }
             .stat-label {
-                color: #666;
+                color: #a0aec0;
                 font-size: 1em;
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 1px;
             }
             .users-table {
-                background: white;
+                background: #1a202c;
                 border-radius: 15px;
                 overflow: hidden;
-                box-shadow: 0 8px 25px rgba(10, 17, 40, 0.1);
-                border: 2px solid #0a1128;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+                border: 2px solid #2d3748;
                 overflow-x: auto;
             }
             table {
@@ -421,24 +422,25 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 min-width: 800px;
             }
             th {
-                background: linear(135deg, #0a1128, #1a237e);
-                color: #ffd700;
+                background: linear(135deg, #0a1128, #ffd700);
+                color: #0a1128;
                 padding: 20px 15px;
                 text-align: left;
-                font-weight: 600;
+                font-weight: 700;
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 font-size: 0.9em;
             }
             td {
                 padding: 18px 15px;
-                border-bottom: 1px solid #f1f5f9;
+                border-bottom: 1px solid #2d3748;
+                color: #e2e8f0;
             }
             tr:last-child td {
                 border-bottom: none;
             }
             tr:hover {
-                background: #f8fafc;
+                background: rgba(255, 215, 0, 0.05);
             }
             .user-info {
                 display: flex;
@@ -448,24 +450,24 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .user-id {
                 font-family: 'Monaco', 'Consolas', monospace;
                 font-size: 0.9em;
-                color: #0a1128;
+                color: #ffd700;
                 font-weight: 600;
             }
             .user-email {
                 font-size: 0.8em;
-                color: #666;
+                color: #a0aec0;
             }
             .date {
-                color: #0a1128;
+                color: #e2e8f0;
                 font-weight: 500;
             }
             .days {
                 font-weight: 600;
                 font-size: 1.1em;
-                color: #0a1128;
+                color: #e2e8f0;
             }
             .warning-text {
-                color: #dc2626;
+                color: #ff6b6b;
                 animation: pulse 2s infinite;
                 font-weight: 700;
             }
@@ -479,19 +481,19 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 font-size: 0.9em;
             }
             .status.active {
-                background: #dcfce7;
-                color: #166534;
-                border: 1px solid #bbf7d0;
+                background: #22543d;
+                color: #68d391;
+                border: 1px solid #38a169;
             }
             .status.warning {
-                background: #fef3c7;
-                color: #92400e;
-                border: 1px solid #fde68a;
+                background: #744210;
+                color: #f6e05e;
+                border: 1px solid #d69e2e;
             }
             .status.expired {
-                background: #fee2e2;
-                color: #991b1b;
-                border: 1px solid #fecaca;
+                background: #742a2a;
+                color: #fc8181;
+                border: 1px solid #e53e3e;
             }
             .actions {
                 display: flex;
@@ -515,17 +517,17 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .btn-extend:hover {
                 background: #e6c200;
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3);
+                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
             }
             .btn-revoke {
-                background: #0a1128;
+                background: #2d3748;
                 color: #ffd700;
-                border: 1px solid #0a1128;
+                border: 1px solid #4a5568;
             }
             .btn-revoke:hover {
-                background: #1a237e;
+                background: #4a5568;
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(10, 17, 40, 0.3);
+                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
             }
             .notification {
                 position: fixed;
@@ -541,16 +543,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 transition: all 0.3s ease;
             }
             .notification.success {
-                background: #0a1128;
-                color: #ffd700;
+                background: #22543d;
+                color: #68d391;
                 opacity: 1;
                 transform: translateX(0);
-                border: 2px solid #ffd700;
+                border: 2px solid #38a169;
             }
             .notification.error {
-                background: #dc2626;
+                background: #742a2a;
+                color: #fc8181;
                 opacity: 1;
                 transform: translateX(0);
+                border: 2px solid #e53e3e;
             }
             @keyframes pulse {
                 0% { opacity: 1; }
@@ -560,16 +564,16 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .last-updated {
                 text-align: center;
                 margin-top: 30px;
-                color: #666;
+                color: #a0aec0;
                 font-size: 0.9em;
             }
             .last-updated a {
-                color: #0a1128;
+                color: #ffd700;
                 text-decoration: none;
                 font-weight: 600;
             }
             .last-updated a:hover {
-                color: #ffd700;
+                color: #e6c200;
                 text-decoration: underline;
             }
             @media (max-width: 768px) {
@@ -751,4 +755,3 @@ app.listen(PORT, () => {
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
   console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
 });
-
