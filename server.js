@@ -135,6 +135,97 @@ app.post('/api/check-expirations', async (req, res) => {
   res.json({ success: true, message: 'Expiration check completed' });
 });
 
+// Admin dashboard endpoints
+app.get('/api/admin/premium-users', async (req, res) => {
+  try {
+    console.log('👑 Admin: Fetching premium users');
+    
+    const { data: premiumUsers, error } = await supabase
+      .from('user_scripts')
+      .select('*')
+      .eq('is_premium', true)
+      .order('premium_expires_at', { ascending: true });
+
+    if (error) throw error;
+
+    // Count days remaining for each user
+    const usersWithDetails = premiumUsers.map(user => {
+      const expires = new Date(user.premium_expires_at);
+      const now = new Date();
+      const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+      
+      return {
+        user_id: user.user_id,
+        is_premium: user.is_premium,
+        premium_expires_at: user.premium_expires_at,
+        days_remaining: daysRemaining > 0 ? daysRemaining : 0,
+        status: daysRemaining > 0 ? 'Active' : 'Expired'
+      };
+    });
+
+    res.json({
+      success: true,
+      total_premium_users: premiumUsers.length,
+      users: usersWithDetails
+    });
+    
+  } catch (error) {
+    console.error('❌ Admin error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get dashboard statistics
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    console.log('📊 Admin: Fetching dashboard stats');
+    
+    // Get total premium users
+    const { data: premiumUsers, error: premiumError } = await supabase
+      .from('user_scripts')
+      .select('user_id')
+      .eq('is_premium', true);
+
+    if (premiumError) throw premiumError;
+
+    // Get expiring soon (within 7 days)
+    const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+    
+    const { data: expiringSoon, error: expiringError } = await supabase
+      .from('user_scripts')
+      .select('user_id')
+      .eq('is_premium', true)
+      .lt('premium_expires_at', soon)
+      .gt('premium_expires_at', now);
+
+    if (expiringError) throw expiringError;
+
+    // Get expired users
+    const { data: expiredUsers, error: expiredError } = await supabase
+      .from('user_scripts')
+      .select('user_id')
+      .eq('is_premium', true)
+      .lt('premium_expires_at', now);
+
+    if (expiredError) throw expiredError;
+
+    res.json({
+      success: true,
+      stats: {
+        total_premium_users: premiumUsers.length,
+        expiring_soon: expiringSoon.length,
+        expired_but_active: expiredUsers.length,
+        last_updated: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Admin stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', service: 'WooCommerce-Supabase Bridge' });
@@ -145,5 +236,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📋 Webhook endpoint: http://localhost:3000/api/webhook`);
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
-
+  console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/stats`);
 });
