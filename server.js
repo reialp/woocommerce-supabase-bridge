@@ -43,7 +43,7 @@ async function checkExpiredSubscriptions() {
     
     const { data: expiredUsers, error } = await supabase
       .from('user_scripts')
-      .select('user_id, email')
+      .select('user_id')
       .eq('is_premium', true)
       .lt('premium_expires_at', now);
 
@@ -145,4 +145,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📋 Webhook endpoint: http://localhost:3000/api/webhook`);
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
+
 });
