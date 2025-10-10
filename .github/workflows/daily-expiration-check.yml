@@ -1,0 +1,14 @@
+name: Daily Expiration Check
+on:
+  schedule:
+    # Runs at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  check-expirations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check expired subscriptions
+        run: |
+          curl -X POST "https://woocommerce-supabase-bridge.vercel.app/api/check-expirations"
