@@ -308,7 +308,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .dashboard {
                 max-width: 1400px;
                 margin: 0 auto;
-                background: rgba(255, 255, 255, 0.98);
+                background: dark navy blue;
                 backdrop-filter: blur(10px);
                 padding: 40px;
                 border-radius: 20px;
@@ -751,3 +751,4 @@ app.listen(PORT, () => {
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
   console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
 });
+
