@@ -96,8 +96,22 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     sameSite: 'lax'
   },
-  proxy: true
+  proxy: true,
+  // Note: For production, consider using a proper session store like Redis
+  // For now, we'll use MemoryStore with the understanding it's not ideal for production
 }));
+
+// =============================================================================
+// 🎯 ROOT ROUTE - Fix 404 errors
+// =============================================================================
+
+app.get('/', (req, res) => {
+  res.redirect('/api/admin/login');
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No content for favicon
+});
 
 // =============================================================================
 // 🎯 ENVIRONMENT CONFIGURATION
