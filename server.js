@@ -25,9 +25,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const PREMIUM_PRODUCT_IDS = [2860];
 
-// Admin credentials - FIXED: Use pre-hashed password for consistency
+// Admin credentials - Use environment variables only
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-// Pre-hashed version of 'marymelashouse.5' - this ensures consistent hashing
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8V/7.9qg5s6d4r3e2w1y0u7i8o9p0a1s2d3f4g5h6j7k8l9m0n1o2p3';
 
 // Middleware to check if user is authenticated
@@ -137,21 +136,12 @@ app.get('/api/admin/login', (req, res) => {
               border: 1px solid #e53e3e;
               display: none;
           }
-          .demo-info {
-              background: #2d3748;
-              color: #a0aec0;
-              padding: 15px;
-              border-radius: 8px;
-              margin-top: 20px;
-              font-size: 0.9em;
-              border: 1px solid #4a5568;
-          }
       </style>
   </head>
   <body>
       <div class="login-container">
           <div class="logo">
-              <h1>Inkwell</h1>
+              <h1>🎨 Inkwell</h1>
               <p>Admin Dashboard Login</p>
           </div>
           
@@ -168,12 +158,6 @@ app.get('/api/admin/login', (req, res) => {
               </div>
               <button type="submit" class="btn-login">🔐 Login</button>
           </form>
-          
-          <div class="demo-info">
-              <strong>Default Credentials:</strong><br>
-              Username: admin<br>
-              Password: marymelashouse.5
-          </div>
       </div>
 
       <script>
@@ -214,20 +198,12 @@ app.get('/api/admin/login', (req, res) => {
   res.send(html);
 });
 
-// Admin login endpoint - FIXED: Proper async password comparison
+// Admin login endpoint - Secure version without direct password check
 app.post('/api/admin/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
   
   try {
-    // For development/testing, you can add a direct password check
-    // Remove this in production!
-    if (username === ADMIN_USERNAME && password === 'marymelashouse.5') {
-      req.session.isAuthenticated = true;
-      req.session.username = username;
-      return res.json({ success: true });
-    }
-    
-    // Normal bcrypt comparison
+    // Only use bcrypt comparison for security
     if (username === ADMIN_USERNAME && await bcrypt.compare(password, ADMIN_PASSWORD_HASH)) {
       req.session.isAuthenticated = true;
       req.session.username = username;
@@ -251,7 +227,6 @@ app.post('/api/admin/logout', (req, res) => {
   });
 });
 
-// [Rest of your existing functions remain the same...]
 // Function to get user by email using Admin API
 async function getUserByEmail(email) {
   try {
@@ -535,7 +510,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-        <title> Inkwell Premium Dashboard</title>
+        <title>🎨 Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1045,7 +1020,4 @@ app.listen(PORT, () => {
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
   console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
   console.log(`🔐 Admin login: http://localhost:3000/api/admin/login`);
-  console.log(`\nDefault admin credentials:`);
-  console.log(`👤 Username: admin`);
-  console.log(`🔑 Password: marymelashouse.5`);
 });
