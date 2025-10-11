@@ -2,19 +2,24 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 import session from 'express-session';
+import MemoryStore from 'memorystore';
 
 const app = express();
 app.use(express.json());
 
-// Session middleware for admin authentication
+// Session middleware for Vercel serverless environment
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-super-secret-session-key-change-in-production',
   resave: false,
   saveUninitialized: false,
+  store: new (MemoryStore(session))({
+    checkPeriod: 86400000 // prune expired entries every 24h
+  }),
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: true, // Required for Vercel
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'lax'
+    sameSite: 'none', // Required for cross-origin
+    httpOnly: true
   }
 }));
 
@@ -29,29 +34,59 @@ const PREMIUM_PRODUCT_IDS = [2860];
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'marymelashouse.5';
 
-// Simple CORS middleware for admin routes
-app.use('/api/admin/*', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+// CORS middleware for all routes
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Allow specific origins or all in development
+  const allowedOrigins = [
+    'https://woocommerce-supabase-bridge.vercel.app',
+    'http://localhost:3000'
+  ];
+  
+  if (allowedOrigins.includes(origin) || !origin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
+  
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization, X-Requested-With');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   next();
 });
 
 // Middleware to check if user is authenticated
 const requireAuth = (req, res, next) => {
-  console.log('Session check:', req.session);
+  console.log('Session check:', {
+    isAuthenticated: req.session.isAuthenticated,
+    sessionId: req.sessionID,
+    session: req.session
+  });
+  
   if (req.session.isAuthenticated) {
     next();
   } else {
     console.log('Not authenticated, redirecting to login');
-    res.redirect('/api/admin/login');
+    // For API calls, return JSON error; for browser, redirect
+    if (req.headers['content-type']?.includes('application/json')) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+    } else {
+      res.redirect('/api/admin/login');
+    }
   }
 };
 
 // Admin login page
 app.get('/api/admin/login', (req, res) => {
-  console.log('Login page accessed, session:', req.session);
+  console.log('Login page accessed, session:', {
+    sessionId: req.sessionID,
+    isAuthenticated: req.session.isAuthenticated
+  });
   
   if (req.session.isAuthenticated) {
     console.log('Already authenticated, redirecting to dashboard');
@@ -203,13 +238,14 @@ app.get('/api/admin/login', (req, res) => {
                           'Content-Type': 'application/json',
                       },
                       body: JSON.stringify({ username, password }),
-                      credentials: 'include'
+                      credentials: 'include' // Important for cookies
                   });
                   
                   const result = await response.json();
                   
                   if (result.success) {
                       console.log('Login successful, redirecting to dashboard');
+                      // Force a hard redirect to ensure cookies are sent
                       window.location.href = '/api/admin/dashboard';
                   } else {
                       errorMessage.textContent = result.error || 'Login failed';
@@ -234,11 +270,12 @@ app.get('/api/admin/login', (req, res) => {
   res.send(html);
 });
 
-// Admin login endpoint with plain text password
+// Admin login endpoint
 app.post('/api/admin/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
   
   console.log('Login attempt for username:', username);
+  console.log('Session ID:', req.sessionID);
   
   if (!username || !password) {
     return res.status(400).json({ success: false, error: 'Username and password required' });
@@ -255,16 +292,24 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
       req.session.username = username;
       req.session.loginTime = new Date().toISOString();
       
-      console.log('Credentials valid, setting session');
+      console.log('Credentials valid, setting session. Session ID:', req.sessionID);
       
-      // Manually save session
+      // Save session and then respond
       req.session.save((err) => {
         if (err) {
           console.error('Session save error:', err);
           return res.status(500).json({ success: false, error: 'Session error' });
         }
         console.log('Session saved successfully, user authenticated');
-        res.json({ success: true, message: 'Login successful' });
+        
+        // Set cookie headers explicitly for Vercel
+        res.setHeader('Set-Cookie', req.session.cookie.serialize('connect.sid', req.sessionID));
+        
+        res.json({ 
+          success: true, 
+          message: 'Login successful',
+          sessionId: req.sessionID 
+        });
       });
     } else {
       console.log('Invalid credentials attempt');
@@ -278,11 +323,14 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
 
 // Admin logout
 app.post('/api/admin/logout', (req, res) => {
+  console.log('Logout requested for session:', req.sessionID);
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err);
       return res.status(500).json({ success: false, error: 'Logout failed' });
     }
+    // Clear cookie
+    res.clearCookie('connect.sid');
     res.json({ success: true, message: 'Logged out successfully' });
   });
 });
@@ -497,7 +545,10 @@ app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
 // Enhanced HTML Admin Dashboard
 app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   try {
-    console.log('Admin: Generating enhanced dashboard HTML');
+    console.log('Admin: Generating enhanced dashboard HTML. Session:', {
+      sessionId: req.sessionID,
+      username: req.session.username
+    });
     
     // Get premium users data
     const { data: premiumUsers, error } = await supabase
@@ -994,7 +1045,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     const response = await fetch('/api/admin/extend-subscription', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId, days })
+                        body: JSON.stringify({ userId, days }),
+                        credentials: 'include'
                     });
                     
                     const result = await response.json();
@@ -1017,7 +1069,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     const response = await fetch('/api/admin/revoke-premium', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId })
+                        body: JSON.stringify({ userId }),
+                        credentials: 'include'
                     });
                     
                     const result = await response.json();
@@ -1037,7 +1090,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                 try {
                     const response = await fetch('/api/admin/logout', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include'
                     });
                     
                     const result = await response.json();
