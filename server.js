@@ -27,10 +27,41 @@ app.use(helmet({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Rate limiting - Bruteforce protection
+// =============================================================================
+// 🔧 FIXED RATE LIMITING - Vercel Serverless Compatibility
+// =============================================================================
+
+// Custom key generator to handle Vercel's proxy headers
+const customKeyGenerator = (req, res) => {
+    // Try to get IP from Forwarded header first (RFC 7239)
+    if (req.headers.forwarded) {
+        try {
+            const forwarded = req.headers.forwarded;
+            const forSegment = forwarded.split(';').find(part => part.trim().startsWith('for='));
+            if (forSegment) {
+                const ip = forSegment.split('=')[1].trim();
+                if (ip) return ip.replace(/^\[?(.*?)\]?$/, '$1');
+            }
+        } catch (error) {
+            console.error('Error parsing Forwarded header:', error);
+        }
+    }
+    
+    // Fall back to X-Forwarded-For header
+    if (req.headers['x-forwarded-for']) {
+        const xForwardedFor = req.headers['x-forwarded-for'].split(',')[0].trim();
+        if (xForwardedFor) return xForwardedFor;
+    }
+    
+    // Final fallback to Express's detected IP
+    return req.ip;
+};
+
+// Rate limiting - Bruteforce protection with Vercel compatibility
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 login attempts per windowMs
+  keyGenerator: customKeyGenerator, // Added for Vercel compatibility
   message: { error: 'Too many login attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -39,6 +70,7 @@ const loginLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 100, // Limit each IP to 100 requests per minute
+  keyGenerator: customKeyGenerator, // Added for Vercel compatibility
   message: { error: 'Too many requests, please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -48,7 +80,11 @@ const apiLimiter = rateLimit({
 app.use('/api/admin/login', loginLimiter);
 app.use('/api/', apiLimiter);
 
-// Session middleware for admin authentication - ENHANCED security
+// =============================================================================
+// 🔐 SESSION CONFIGURATION - Serverless Optimized
+// =============================================================================
+
+// Session middleware for admin authentication - OPTIMIZED for serverless
 app.use(session({
   name: 'inkwell.admin.sid',
   secret: process.env.SESSION_SECRET || 'your-super-secret-session-key-change-in-production',
@@ -67,7 +103,7 @@ app.use(session({
 // 🎯 ENVIRONMENT CONFIGURATION
 // =============================================================================
 
-// Your Supabase configuration - MOVED BEFORE validateEnvironment function
+// Your Supabase configuration
 const supabaseUrl = process.env.SUPABASE_URL || 'https://lulmjbdvwcuzpqirsfzg.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1bG1qYmR2d2N1enBxaXJzZnpnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDA1OTUxMCwiZXhwIjoyMDc1NjM1NTEwfQ.1e4CjoUwPKrirbvm535li8Ns52lLvoryPpBTZvUSkUk';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -92,7 +128,7 @@ function validateEnvironment() {
     process.exit(1);
   }
 
-  // Validate Supabase connection - FIXED: variables now defined
+  // Validate Supabase connection
   if (!supabaseUrl || !supabaseKey) {
     console.error('❌ Supabase configuration missing');
     process.exit(1);
