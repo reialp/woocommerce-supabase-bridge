@@ -10,7 +10,8 @@
     "express-session": "^1.18.2",
     "express-validator": "^7.2.1",
     "helmet": "^8.1.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "memorystore": "^1.6.7"
   },
   "scripts": {
     "dev": "node server.js",
