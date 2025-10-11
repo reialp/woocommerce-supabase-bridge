@@ -43,10 +43,11 @@ app.use((req, res, next) => {
   // Allow specific origins or all in development
   const allowedOrigins = [
     'https://woocommerce-supabase-bridge.vercel.app',
+    'https://woocommerce-supabase-bridge-*.vercel.app',
     'http://localhost:3000'
   ];
   
-  if (allowedOrigins.includes(origin) || !origin) {
+  if (allowedOrigins.includes(origin) || origin?.includes('vercel.app') || !origin) {
     res.header('Access-Control-Allow-Origin', origin || '*');
   }
   
@@ -62,12 +63,26 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root route - redirect to admin login
+app.get('/', (req, res) => {
+  res.redirect('/api/admin/login');
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    service: 'WooCommerce-Supabase Bridge',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
 // Middleware to check if user is authenticated
 const requireAuth = (req, res, next) => {
   console.log('Session check:', {
     isAuthenticated: req.session.isAuthenticated,
-    sessionId: req.sessionID,
-    session: req.session
+    sessionId: req.sessionID
   });
   
   if (req.session.isAuthenticated) {
@@ -101,6 +116,7 @@ app.get('/api/admin/login', (req, res) => {
   <head>
       <title>Admin Login - Inkwell Dashboard</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
       <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { 
@@ -622,6 +638,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     <head>
         <title>Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
@@ -1119,9 +1136,13 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', service: 'WooCommerce-Supabase Bridge' });
+// Handle 404 for all other routes
+app.use('*', (req, res) => {
+  if (req.originalUrl.startsWith('/api/')) {
+    res.status(404).json({ error: 'API endpoint not found' });
+  } else {
+    res.redirect('/api/admin/login');
+  }
 });
 
 const PORT = process.env.PORT || 3000;
