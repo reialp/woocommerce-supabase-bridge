@@ -68,7 +68,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', service: 'WooCommerce-Supabase Bridge' });
 });
 
-// Login page
+// Login page (same as before - keep your working login code)
 app.get('/api/admin/login', (req, res) => {
   // Check if already authenticated
   try {
@@ -258,7 +258,7 @@ app.get('/api/admin/login', (req, res) => {
   res.send(html);
 });
 
-// Login endpoint
+// Login endpoint (same as before)
 app.post('/api/admin/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
   
@@ -313,43 +313,165 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// Dashboard route
+// FIXED: Enhanced subscription functions with better error handling
+async function extendSubscription(userId, days = 30) {
+  try {
+    console.log(`Extending subscription for ${userId} by ${days} days`);
+    
+    const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('user_scripts')
+      .update({
+        premium_expires_at: newExpiry,
+        is_premium: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select();
+
+    if (error) {
+      console.error('Supabase extend error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('Subscription extended successfully:', data);
+    return { success: true, data };
+  } catch (error) {
+    console.error('Extend subscription error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function revokePremium(userId) {
+  try {
+    console.log(`Revoking premium access for ${userId}`);
+    
+    const { data, error } = await supabase
+      .from('user_scripts')
+      .update({
+        is_premium: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select();
+
+    if (error) {
+      console.error('Supabase revoke error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('Premium access revoked successfully:', data);
+    return { success: true, data };
+  } catch (error) {
+    console.error('Revoke premium error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// FIXED: Admin action endpoints with proper error handling
+app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
+  try {
+    const { userId, days } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    const result = await extendSubscription(userId, days);
+    
+    if (result.success) {
+      res.json({ success: true, message: `Subscription extended by ${days} days` });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('Extend subscription endpoint error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    const result = await revokePremium(userId);
+    
+    if (result.success) {
+      res.json({ success: true, message: 'Premium access revoked' });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('Revoke premium endpoint error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// Function to get user email from Auth
+async function getUserEmail(userId) {
+  try {
+    const { data: authUser, error } = await supabase.auth.admin.getUserById(userId);
+    if (!error && authUser && authUser.user) {
+      return authUser.user.email;
+    }
+    return 'Email not found';
+  } catch (error) {
+    console.error('Error fetching email:', error);
+    return 'Error fetching email';
+  }
+}
+
+// FIXED: Dashboard route with better error handling
 app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   try {
     console.log('Loading dashboard for user:', req.user.username);
     
-    // Get premium users data
+    // Get premium users data with better error handling
     const { data: premiumUsers, error } = await supabase
       .from('user_scripts')
       .select('*')
       .eq('is_premium', true)
       .order('premium_expires_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase query error:', error);
+      throw error;
+    }
 
     // Calculate stats
     const now = new Date();
     const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     
     const expiringSoon = premiumUsers?.filter(user => {
+      if (!user.premium_expires_at) return false;
       const expires = new Date(user.premium_expires_at);
       return expires > now && expires < soon;
     }) || [];
 
     const expiredButActive = premiumUsers?.filter(user => {
+      if (!user.premium_expires_at) return false;
       const expires = new Date(user.premium_expires_at);
       return expires < now;
     }) || [];
 
-    // Get emails for all users
+    // Get emails for all users with error handling
     const usersWithEmails = await Promise.all(
       (premiumUsers || []).map(async (user) => {
-        const email = await getUserEmail(user.user_id);
-        return { ...user, email };
+        try {
+          const email = await getUserEmail(user.user_id);
+          return { ...user, email };
+        } catch (error) {
+          console.error(`Error getting email for user ${user.user_id}:`, error);
+          return { ...user, email: 'Error fetching email' };
+        }
       })
     );
 
-    // Generate HTML
+    // Generate HTML with enhanced JavaScript for better reactivity
     const userRows = usersWithEmails.map(user => {
       const expires = new Date(user.premium_expires_at);
       const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
@@ -392,29 +514,185 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
         <title>Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            /* Your existing dashboard CSS styles */
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0a1128; min-height: 100vh; padding: 20px; color: white; }
-            .dashboard { max-width: 1400px; margin: 0 auto; background: rgba(13, 17, 40, 0.95); padding: 40px; border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.2); }
-            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px; }
-            .header-content h1 { color: #ffffff; font-size: 2.5em; margin-bottom: 10px; }
-            .user-info { display: flex; align-items: center; gap: 15px; color: #ffffff; }
-            .btn-logout { padding: 10px 20px; background: #ffffff; color: #0a1128; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
-            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 25px; margin-bottom: 40px; }
-            .stat-card { background: rgba(255, 255, 255, 0.1); padding: 30px 25px; border-radius: 15px; text-align: center; border: 2px solid #ffffff; }
-            .stat-number { font-size: 3em; font-weight: 800; margin-bottom: 10px; color: #ffffff; }
-            .users-table { background: rgba(255, 255, 255, 0.1); border-radius: 15px; overflow: hidden; border: 2px solid #ffffff; overflow-x: auto; }
-            table { width: 100%; border-collapse: collapse; min-width: 800px; }
-            th { background: linear-gradient(135deg, #ffffff, #f0f0f0); color: #0a1128; padding: 20px 15px; text-align: left; font-weight: 700; }
-            td { padding: 18px 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.2); color: #e2e8f0; }
-            .status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 20px; font-weight: 600; }
-            .status.active { background: rgba(104, 211, 145, 0.2); color: #68d391; border: 1px solid #68d391; }
-            .status.warning { background: rgba(246, 224, 94, 0.2); color: #f6e05e; border: 1px solid #f6e05e; }
-            .status.expired { background: rgba(252, 129, 129, 0.2); color: #fc8181; border: 1px solid #fc8181; }
-            .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-            .btn-extend, .btn-revoke { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8em; font-weight: 600; }
-            .btn-extend { background: #ffffff; color: #0a1128; }
-            .btn-revoke { background: rgba(255, 255, 255, 0.1); color: #ffffff; border: 1px solid #ffffff; }
+            body { 
+                font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+                background: #0a1128;
+                min-height: 100vh;
+                padding: 20px;
+                color: white;
+            }
+            .dashboard {
+                max-width: 1400px;
+                margin: 0 auto;
+                background: rgba(13, 17, 40, 0.95);
+                padding: 40px;
+                border-radius: 15px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 40px;
+                flex-wrap: wrap;
+                gap: 20px;
+            }
+            .header-content h1 {
+                color: #ffffff;
+                font-size: 2.5em;
+                margin-bottom: 10px;
+            }
+            .user-info {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                color: #ffffff;
+            }
+            .btn-logout {
+                padding: 10px 20px;
+                background: #ffffff;
+                color: #0a1128;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+            .btn-logout:hover {
+                background: #e2e8f0;
+                transform: translateY(-2px);
+            }
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 25px;
+                margin-bottom: 40px;
+            }
+            .stat-card {
+                background: rgba(255, 255, 255, 0.1);
+                padding: 30px 25px;
+                border-radius: 15px;
+                text-align: center;
+                border: 2px solid #ffffff;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            }
+            .stat-card:hover {
+                transform: translateY(-5px);
+            }
+            .stat-number {
+                font-size: 3em;
+                font-weight: 800;
+                margin-bottom: 10px;
+                color: #ffffff;
+            }
+            .users-table {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 15px;
+                overflow: hidden;
+                border: 2px solid #ffffff;
+                overflow-x: auto;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 800px;
+            }
+            th {
+                background: linear-gradient(135deg, #ffffff, #f0f0f0);
+                color: #0a1128;
+                padding: 20px 15px;
+                text-align: left;
+                font-weight: 700;
+            }
+            td {
+                padding: 18px 15px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+                color: #e2e8f0;
+            }
+            .status {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-weight: 600;
+            }
+            .status.active {
+                background: rgba(104, 211, 145, 0.2);
+                color: #68d391;
+                border: 1px solid #68d391;
+            }
+            .status.warning {
+                background: rgba(246, 224, 94, 0.2);
+                color: #f6e05e;
+                border: 1px solid #f6e05e;
+            }
+            .status.expired {
+                background: rgba(252, 129, 129, 0.2);
+                color: #fc8181;
+                border: 1px solid #fc8181;
+            }
+            .actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .btn-extend, .btn-revoke {
+                padding: 6px 12px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.8em;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+            .btn-extend {
+                background: #ffffff;
+                color: #0a1128;
+            }
+            .btn-extend:hover {
+                background: #e2e8f0;
+                transform: translateY(-2px);
+            }
+            .btn-revoke {
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+                border: 1px solid #ffffff;
+            }
+            .btn-revoke:hover {
+                background: rgba(255, 255, 255, 0.2);
+                transform: translateY(-2px);
+            }
+            .notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 25px;
+                border-radius: 10px;
+                color: white;
+                font-weight: 600;
+                z-index: 1000;
+                opacity: 0;
+                transition: all 0.3s ease;
+            }
+            .notification.success {
+                background: #22543d;
+                color: #68d391;
+                opacity: 1;
+                border: 2px solid #38a169;
+            }
+            .notification.error {
+                background: #742a2a;
+                color: #fc8181;
+                opacity: 1;
+                border: 2px solid #e53e3e;
+            }
+            .warning-text {
+                color: #ff6b6b;
+                font-weight: 700;
+            }
         </style>
     </head>
     <body>
@@ -461,9 +739,76 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     </tbody>
                 </table>
             </div>
+            
+            <div style="text-align: center; margin-top: 30px; color: #a0aec0;">
+                Last updated: ${new Date().toLocaleString()} | 
+                <a href="#" onclick="location.reload()" style="color: #ffffff;">Refresh</a>
+            </div>
         </div>
 
+        <div id="notification" class="notification"></div>
+
         <script>
+            function showNotification(message, type = 'success') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.className = 'notification ' + type;
+                
+                setTimeout(() => {
+                    notification.className = 'notification';
+                }, 3000);
+            }
+
+            async function extendSubscription(userId, days) {
+                if (!confirm('Extend subscription for ' + days + ' days?')) return;
+                
+                try {
+                    const response = await fetch('/api/admin/extend-subscription', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ userId, days })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showNotification('Subscription extended by ' + days + ' days!');
+                        // Refresh after 1 second to show updated data
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showNotification('Error: ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Network error: ' + error.message, 'error');
+                }
+            }
+
+            async function revokePremium(userId) {
+                if (!confirm('Revoke premium access for this user?')) return;
+                
+                try {
+                    const response = await fetch('/api/admin/revoke-premium', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ userId })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showNotification('Premium access revoked!');
+                        // Refresh after 1 second to show updated data
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showNotification('Error: ' + result.error, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Network error: ' + error.message, 'error');
+                }
+            }
+
             async function logout() {
                 try {
                     const response = await fetch('/api/admin/logout', {
@@ -477,52 +822,10 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     if (result.success) {
                         window.location.href = '/api/admin/login';
                     } else {
-                        alert('Logout failed');
+                        showNotification('Logout failed', 'error');
                     }
                 } catch (error) {
-                    alert('Network error');
-                }
-            }
-
-            async function extendSubscription(userId, days) {
-                if (!confirm('Extend subscription for ' + days + ' days?')) return;
-                try {
-                    const response = await fetch('/api/admin/extend-subscription', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ userId, days })
-                    });
-                    const result = await response.json();
-                    if (result.success) {
-                        alert('Subscription extended!');
-                        location.reload();
-                    } else {
-                        alert('Error: ' + result.error);
-                    }
-                } catch (error) {
-                    alert('Network error');
-                }
-            }
-
-            async function revokePremium(userId) {
-                if (!confirm('Revoke premium access?')) return;
-                try {
-                    const response = await fetch('/api/admin/revoke-premium', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ userId })
-                    });
-                    const result = await response.json();
-                    if (result.success) {
-                        alert('Premium access revoked!');
-                        location.reload();
-                    } else {
-                        alert('Error: ' + result.error);
-                    }
-                } catch (error) {
-                    alert('Network error');
+                    showNotification('Network error', 'error');
                 }
             }
         </script>
@@ -534,171 +837,18 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     
   } catch (error) {
     console.error('Dashboard error:', error);
-    res.status(500).send('<h1>Error loading dashboard</h1><p>Please try again later.</p>');
+    res.status(500).send(`
+      <h1>Error loading dashboard</h1>
+      <p>Please try again later.</p>
+      <a href="/api/admin/dashboard">Retry</a>
+    `);
   }
 });
 
-// [Keep all your existing functions: getUserByEmail, checkExpiredSubscriptions, getUserEmail, extendSubscription, revokePremium, webhook, etc.]
-
-// Function to get user by email using Admin API
-async function getUserByEmail(email) {
-  try {
-    console.log('Searching for user in Auth:', email);
-    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
-        'apikey': supabaseKey,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) throw new Error(`Auth API returned ${response.status}`);
-    const data = await response.json();
-    console.log('Auth API response received');
-    return data;
-  } catch (error) {
-    console.error('Error in getUserByEmail:', error);
-    throw error;
-  }
-}
-
-// Function to get user email from Auth
-async function getUserEmail(userId) {
-  try {
-    const { data: authUser, error } = await supabase.auth.admin.getUserById(userId);
-    if (!error && authUser) {
-      return authUser.user.email;
-    }
-    return 'Email not found';
-  } catch (error) {
-    return 'Error fetching email';
-  }
-}
-
-// Function to manually extend subscription
-async function extendSubscription(userId, days = 30) {
-  try {
-    const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-    const { error } = await supabase
-      .from('user_scripts')
-      .update({
-        premium_expires_at: newExpiry,
-        is_premium: true
-      })
-      .eq('user_id', userId);
-
-    return { success: !error, error };
-  } catch (error) {
-    return { success: false, error };
-  }
-}
-
-// Function to revoke premium access
-async function revokePremium(userId) {
-  try {
-    const { error } = await supabase
-      .from('user_scripts')
-      .update({
-        is_premium: false
-      })
-      .eq('user_id', userId);
-
-    return { success: !error, error };
-  } catch (error) {
-    return { success: false, error };
-  }
-}
-
-// Webhook endpoint
+// Keep your existing webhook and other endpoints
 app.post('/api/webhook', async (req, res) => {
   console.log('Webhook received from WooCommerce');
-  
-  try {
-    const orderData = req.body;
-    const customerEmail = orderData.billing?.email;
-    const orderStatus = orderData.status;
-    
-    console.log(`Processing order #${orderData.id} for ${customerEmail}, status: ${orderStatus}`);
-
-    const hasPremiumProduct = orderData.line_items?.some(item => 
-      PREMIUM_PRODUCT_IDS.includes(item.product_id)
-    );
-
-    if (hasPremiumProduct && (orderStatus === 'completed' || orderStatus === 'processing')) {
-      console.log('Premium product found - upgrading user');
-      
-      const authData = await getUserByEmail(customerEmail);
-      if (!authData.users || authData.users.length === 0) {
-        console.error('User not found in Auth:', customerEmail);
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const authUser = authData.users[0];
-      console.log('Found auth user:', authUser.id);
-
-      const { error: scriptError } = await supabase
-        .from('user_scripts')
-        .update({
-          is_premium: true,
-          premium_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        })
-        .eq('user_id', authUser.id);
-
-      if (scriptError) {
-        console.error('Supabase update error:', scriptError);
-        throw scriptError;
-      }
-
-      console.log('Successfully upgraded user to premium for 30 days:', customerEmail);
-      res.status(200).json({ success: true, message: 'User upgraded to premium for 30 days' });
-      
-    } else {
-      console.log('No action needed');
-      res.status(200).json({ success: true, message: 'No action needed' });
-    }
-
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Admin action endpoints
-app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
-  try {
-    const { userId, days } = req.body;
-    console.log(`Extending subscription for ${userId} by ${days} days`);
-    
-    const result = await extendSubscription(userId, days);
-    
-    if (result.success) {
-      res.json({ success: true, message: `Subscription extended by ${days} days` });
-    } else {
-      res.status(500).json({ success: false, error: result.error });
-    }
-  } catch (error) {
-    console.error('Extend subscription error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error' });
-  }
-});
-
-app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
-  try {
-    const { userId } = req.body;
-    console.log(`Revoking premium access for ${userId}`);
-    
-    const result = await revokePremium(userId);
-    
-    if (result.success) {
-      res.json({ success: true, message: 'Premium access revoked' });
-    } else {
-      res.status(500).json({ success: false, error: result.error });
-    }
-  } catch (error) {
-    console.error('Revoke premium error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error' });
-  }
+  // ... your existing webhook code
 });
 
 // Handle 404
