@@ -64,6 +64,21 @@ app.use(session({
 }));
 
 // =============================================================================
+// 🎯 ENVIRONMENT CONFIGURATION
+// =============================================================================
+
+// Your Supabase configuration - MOVED BEFORE validateEnvironment function
+const supabaseUrl = process.env.SUPABASE_URL || 'https://lulmjbdvwcuzpqirsfzg.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1bG1qYmR2d2N1enBxaXJzZnpnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDA1OTUxMCwiZXhwIjoyMDc1NjM1NTEwfQ.1e4CjoUwPKrirbvm535li8Ns52lLvoryPpBTZvUSkUk';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const PREMIUM_PRODUCT_IDS = [2860];
+
+// Admin credentials - Use environment variables only
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8V/7.9qg5s6d4r3e2w1y0u7i8o9p0a1s2d3f4g5h6j7k8l9m0n1o2p3';
+
+// =============================================================================
 // 🎯 ENVIRONMENT VALIDATION - Production Ready Checks
 // =============================================================================
 
@@ -77,7 +92,7 @@ function validateEnvironment() {
     process.exit(1);
   }
 
-  // Validate Supabase connection
+  // Validate Supabase connection - FIXED: variables now defined
   if (!supabaseUrl || !supabaseKey) {
     console.error('❌ Supabase configuration missing');
     process.exit(1);
@@ -85,17 +100,6 @@ function validateEnvironment() {
 
   console.log('✅ Environment validation passed');
 }
-
-// Your Supabase configuration
-const supabaseUrl = process.env.SUPABASE_URL || 'https://lulmjbdvwcuzpqirsfzg.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1bG1qYmR2d2N1enBxaXJzZnpnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDA1OTUxMCwiZXhwIjoyMDc1NjM1NTEwfQ.1e4CjoUwPKrirbvm535li8Ns52lLvoryPpBTZvUSkUk';
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-const PREMIUM_PRODUCT_IDS = [2860];
-
-// Admin credentials - Use environment variables only
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8V/7.9qg5s6d4r3e2w1y0u7i8o9p0a1s2d3f4g5h6j7k8l9m0n1o2p3';
 
 // =============================================================================
 // 📊 LOGGING & MONITORING SYSTEM
@@ -610,8 +614,7 @@ app.get('/api/admin/metrics', requireAuth, async (req, res) => {
       totalUsers,
       premiumUsers,
       newPremiumThisMonth,
-      expiringThisWeek,
-      revenueData
+      expiringThisWeek
     ] = await Promise.all([
       // Total users
       supabase.from('user_scripts').select('*', { count: 'exact', head: true }),
@@ -712,6 +715,42 @@ app.post('/api/admin/bulk/extend', requireAuth, validateUserAction, async (req, 
     });
   } catch (error) {
     console.error('Bulk extend error:', error);
+    res.status(500).json({ success: false, error: 'Bulk operation failed' });
+  }
+});
+
+// =============================================================================
+// 🆕 ADDED: BULK REVOKE ENDPOINT (MISSING FROM ORIGINAL)
+// =============================================================================
+
+app.post('/api/admin/bulk/revoke', requireAuth, async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'User IDs array required' });
+    }
+
+    const results = await Promise.all(
+      userIds.map(userId => revokePremium(userId, req.session.username))
+    );
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    AuditLogger.logAction('BULK_REVOKE', req.session.username, { 
+      total: userIds.length, 
+      successful, 
+      failed 
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Revoked premium access for ${successful} users, ${failed} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk revoke error:', error);
     res.status(500).json({ success: false, error: 'Bulk operation failed' });
   }
 });
@@ -831,6 +870,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
       return `
         <tr class="${statusClass}" data-user-id="${user.user_id}" data-days-remaining="${daysRemaining}">
           <td>
+            <input type="checkbox" onchange="toggleUserSelection('${user.user_id}', this)">
             <div class="user-info">
               <div class="user-id">${user.user_id.substring(0, 12)}...</div>
               <div class="user-email">${user.email}</div>
@@ -1548,20 +1588,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                 }
             }
 
-            // Initialize search and add checkboxes to rows
+            // Initialize search
             document.getElementById('searchInput').addEventListener('input', filterTable);
-            
-            // Add checkboxes to existing rows
-            document.querySelectorAll('#usersTable tbody tr').forEach(row => {
-                const userId = row.getAttribute('data-user-id');
-                const firstCell = row.querySelector('td:first-child');
-                const existingContent = firstCell.innerHTML;
-                
-                firstCell.innerHTML = \`
-                    <input type="checkbox" onchange="toggleUserSelection('\${userId}', this)">
-                    \${existingContent}
-                \`;
-            });
         </script>
     </body>
     </html>
@@ -1686,3 +1714,9 @@ app.listen(PORT, async () => {
   console.log(`   ✅ Business intelligence metrics`);
   console.log(`   ✅ Production-ready error handling`);
 });
+
+// =============================================================================
+// 🆕 VERCEL SERVERLESS COMPATIBILITY - ADD THIS EXPORT
+// =============================================================================
+
+export default app;
