@@ -7,15 +7,17 @@ import session from 'express-session';
 const app = express();
 app.use(express.json());
 
-// Session middleware for admin authentication
+// Session middleware for admin authentication - FIXED for serverless
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-super-secret-session-key-change-in-production',
-  resave: false,
+  resave: true, // Changed to true for serverless
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
+    secure: true, // Force true for Vercel
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'none' // Added for cross-origin requests
+  },
+  proxy: true // Added for Vercel
 }));
 
 // Your Supabase configuration
@@ -31,9 +33,11 @@ const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8V/7.9qg5
 
 // Middleware to check if user is authenticated
 const requireAuth = (req, res, next) => {
+  console.log('Session check:', req.session); // Debug logging
   if (req.session.isAuthenticated) {
     next();
   } else {
+    console.log('Not authenticated, redirecting to login');
     res.redirect('/api/admin/login');
   }
 };
@@ -41,6 +45,7 @@ const requireAuth = (req, res, next) => {
 // Admin login page
 app.get('/api/admin/login', (req, res) => {
   if (req.session.isAuthenticated) {
+    console.log('Already authenticated, redirecting to dashboard');
     return res.redirect('/api/admin/dashboard');
   }
 
@@ -174,12 +179,14 @@ app.get('/api/admin/login', (req, res) => {
                       headers: {
                           'Content-Type': 'application/json',
                       },
-                      body: JSON.stringify({ username, password })
+                      body: JSON.stringify({ username, password }),
+                      credentials: 'include' // Important for cookies
                   });
                   
                   const result = await response.json();
                   
                   if (result.success) {
+                      console.log('Login successful, redirecting...');
                       window.location.href = '/api/admin/dashboard';
                   } else {
                       errorMessage.textContent = result.error || 'Login failed';
@@ -198,7 +205,7 @@ app.get('/api/admin/login', (req, res) => {
   res.send(html);
 });
 
-// Admin login endpoint - Secure version without direct password check
+// Admin login endpoint - FIXED with explicit session save
 app.post('/api/admin/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
   
@@ -207,8 +214,18 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
     if (username === ADMIN_USERNAME && await bcrypt.compare(password, ADMIN_PASSWORD_HASH)) {
       req.session.isAuthenticated = true;
       req.session.username = username;
-      res.json({ success: true });
+      
+      // Explicitly save session for serverless environments
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ success: false, error: 'Session error' });
+        }
+        console.log('Session saved successfully');
+        res.json({ success: true });
+      });
     } else {
+      console.log('Invalid credentials attempt');
       res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
   } catch (error) {
@@ -217,6 +234,7 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   }
 });
 
+// [Rest of your code remains the same - functions, webhook, dashboard, etc.]
 // Admin logout
 app.post('/api/admin/logout', (req, res) => {
   req.session.destroy((err) => {
