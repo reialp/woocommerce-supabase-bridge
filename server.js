@@ -141,7 +141,7 @@ app.get('/api/admin/login', (req, res) => {
   <body>
       <div class="login-container">
           <div class="logo">
-              <h1>🎨 Inkwell</h1>
+              <h1> Inkwell</h1>
               <p>Admin Dashboard Login</p>
           </div>
           
@@ -510,7 +510,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-        <title>🎨 Inkwell Premium Dashboard</title>
+        <title> Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -831,7 +831,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
         <div class="dashboard">
             <div class="header">
                 <div class="header-content">
-                    <h1>🎨 Inkwell Premium Dashboard</h1>
+                    <h1> Inkwell Premium Dashboard</h1>
                     <p>Manage and monitor your premium subscribers</p>
                 </div>
                 <div class="user-info">
@@ -1021,3 +1021,4 @@ app.listen(PORT, () => {
   console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
   console.log(`🔐 Admin login: http://localhost:3000/api/admin/login`);
 });
+
