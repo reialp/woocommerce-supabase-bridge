@@ -141,7 +141,7 @@ app.get('/api/admin/login', (req, res) => {
   <body>
       <div class="login-container">
           <div class="logo">
-              <h1> Inkwell</h1>
+              <h1>Inkwell</h1>
               <p>Admin Dashboard Login</p>
           </div>
           
@@ -156,7 +156,7 @@ app.get('/api/admin/login', (req, res) => {
                   <label for="password">Password</label>
                   <input type="password" id="password" name="password" required>
               </div>
-              <button type="submit" class="btn-login">🔐 Login</button>
+              <button type="submit" class="btn-login">Login</button>
           </form>
       </div>
 
@@ -230,7 +230,7 @@ app.post('/api/admin/logout', (req, res) => {
 // Function to get user by email using Admin API
 async function getUserByEmail(email) {
   try {
-    console.log('🔍 Searching for user in Auth:', email);
+    console.log('Searching for user in Auth:', email);
     const response = await fetch(`${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
       method: 'GET',
       headers: {
@@ -242,10 +242,10 @@ async function getUserByEmail(email) {
     
     if (!response.ok) throw new Error(`Auth API returned ${response.status}`);
     const data = await response.json();
-    console.log('📊 Auth API response received');
+    console.log('Auth API response received');
     return data;
   } catch (error) {
-    console.error('💥 Error in getUserByEmail:', error);
+    console.error('Error in getUserByEmail:', error);
     throw error;
   }
 }
@@ -254,7 +254,7 @@ async function getUserByEmail(email) {
 async function checkExpiredSubscriptions() {
   try {
     const now = new Date().toISOString();
-    console.log('🕒 Checking for expired premium subscriptions...');
+    console.log('Checking for expired premium subscriptions...');
     
     const { data: expiredUsers, error } = await supabase
       .from('user_scripts')
@@ -263,12 +263,12 @@ async function checkExpiredSubscriptions() {
       .lt('premium_expires_at', now);
 
     if (error) {
-      console.error('❌ Error checking expired users:', error);
+      console.error('Error checking expired users:', error);
       return;
     }
 
     if (expiredUsers && expiredUsers.length > 0) {
-      console.log(`📉 Found ${expiredUsers.length} expired subscriptions to revert`);
+      console.log(`Found ${expiredUsers.length} expired subscriptions to revert`);
       
       const userIds = expiredUsers.map(user => user.user_id);
       const { error: updateError } = await supabase
@@ -277,15 +277,15 @@ async function checkExpiredSubscriptions() {
         .in('user_id', userIds);
 
       if (updateError) {
-        console.error('❌ Error reverting expired users:', updateError);
+        console.error('Error reverting expired users:', updateError);
       } else {
-        console.log(`✅ Successfully reverted ${userIds.length} users to non-premium`);
+        console.log(`Successfully reverted ${userIds.length} users to non-premium`);
       }
     } else {
-      console.log('➡️ No expired subscriptions found');
+      console.log('No expired subscriptions found');
     }
   } catch (error) {
-    console.error('💥 Error in checkExpiredSubscriptions:', error);
+    console.error('Error in checkExpiredSubscriptions:', error);
   }
 }
 
@@ -337,7 +337,7 @@ async function revokePremium(userId) {
 }
 
 app.post('/api/webhook', async (req, res) => {
-  console.log('🛒 Webhook received from WooCommerce');
+  console.log('Webhook received from WooCommerce');
   
   try {
     const orderData = req.body;
@@ -351,16 +351,16 @@ app.post('/api/webhook', async (req, res) => {
     );
 
     if (hasPremiumProduct && (orderStatus === 'completed' || orderStatus === 'processing')) {
-      console.log('⭐ Premium product found - upgrading user');
+      console.log('Premium product found - upgrading user');
       
       const authData = await getUserByEmail(customerEmail);
       if (!authData.users || authData.users.length === 0) {
-        console.error('❌ User not found in Auth:', customerEmail);
+        console.error('User not found in Auth:', customerEmail);
         return res.status(404).json({ error: 'User not found' });
       }
 
       const authUser = authData.users[0];
-      console.log('👤 Found auth user:', authUser.id);
+      console.log('Found auth user:', authUser.id);
 
       // FIXED: Update existing user instead of upsert
       const { error: scriptError } = await supabase
@@ -372,27 +372,27 @@ app.post('/api/webhook', async (req, res) => {
         .eq('user_id', authUser.id);
 
       if (scriptError) {
-        console.error('❌ Supabase update error:', scriptError);
+        console.error('Supabase update error:', scriptError);
         throw scriptError;
       }
 
-      console.log('✅ Successfully upgraded user to premium for 30 days:', customerEmail);
+      console.log('Successfully upgraded user to premium for 30 days:', customerEmail);
       res.status(200).json({ success: true, message: 'User upgraded to premium for 30 days' });
       
     } else {
-      console.log('➡️ No action needed');
+      console.log('No action needed');
       res.status(200).json({ success: true, message: 'No action needed' });
     }
 
   } catch (error) {
-    console.error('💥 Webhook error:', error);
+    console.error('Webhook error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // New endpoint to manually check expirations
 app.post('/api/check-expirations', requireAuth, async (req, res) => {
-  console.log('🔍 Manual expiration check requested');
+  console.log('Manual expiration check requested');
   await checkExpiredSubscriptions();
   res.json({ success: true, message: 'Expiration check completed' });
 });
@@ -401,7 +401,7 @@ app.post('/api/check-expirations', requireAuth, async (req, res) => {
 app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
   try {
     const { userId, days } = req.body;
-    console.log(`⏰ Extending subscription for ${userId} by ${days} days`);
+    console.log(`Extending subscription for ${userId} by ${days} days`);
     
     const result = await extendSubscription(userId, days);
     
@@ -411,7 +411,7 @@ app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
       res.status(500).json({ success: false, error: result.error });
     }
   } catch (error) {
-    console.error('❌ Extend subscription error:', error);
+    console.error('Extend subscription error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -419,7 +419,7 @@ app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
 app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
   try {
     const { userId } = req.body;
-    console.log(`🚫 Revoking premium access for ${userId}`);
+    console.log(`Revoking premium access for ${userId}`);
     
     const result = await revokePremium(userId);
     
@@ -429,7 +429,7 @@ app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
       res.status(500).json({ success: false, error: result.error });
     }
   } catch (error) {
-    console.error('❌ Revoke premium error:', error);
+    console.error('Revoke premium error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -437,7 +437,7 @@ app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
 // Enhanced HTML Admin Dashboard with White Bars
 app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   try {
-    console.log('📊 Admin: Generating enhanced dashboard HTML');
+    console.log('Admin: Generating enhanced dashboard HTML');
     
     // Get premium users data
     const { data: premiumUsers, error } = await supabase
@@ -476,7 +476,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
       const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
       const status = daysRemaining > 0 ? 'Active' : 'Expired';
       const statusClass = daysRemaining > 0 ? (daysRemaining <= 7 ? 'warning' : 'active') : 'expired';
-      const statusIcon = daysRemaining > 0 ? (daysRemaining <= 7 ? '⚠️' : '✅') : '❌';
+      const statusIcon = daysRemaining > 0 ? (daysRemaining <= 7 ? '!' : '✓') : '✗';
       
       return `
         <tr class="${statusClass}" data-user-id="${user.user_id}" data-days-remaining="${daysRemaining}">
@@ -492,13 +492,13 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
           <td>
             <div class="actions">
               <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 30)" title="Extend 30 days">
-                ⏰ +30d
+                +30d
               </button>
               <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 7)" title="Extend 7 days">
-                ⏰ +7d
+                +7d
               </button>
               <button class="btn-revoke" onclick="revokePremium('${user.user_id}')" title="Revoke Premium">
-                🚫 Revoke
+                Revoke
               </button>
             </div>
           </td>
@@ -510,7 +510,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-        <title> Inkwell Premium Dashboard</title>
+        <title>Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -831,17 +831,17 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
         <div class="dashboard">
             <div class="header">
                 <div class="header-content">
-                    <h1> Inkwell Premium Dashboard</h1>
+                    <h1>Inkwell Premium Dashboard</h1>
                     <p>Manage and monitor your premium subscribers</p>
                 </div>
                 <div class="user-info">
                     <span>Welcome, ${req.session.username}</span>
-                    <button class="btn-logout" onclick="logout()">🚪 Logout</button>
+                    <button class="btn-logout" onclick="logout()">Logout</button>
                 </div>
             </div>
             
             <div class="controls">
-                <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search by user ID or email..." onkeyup="filterTable()">
+                <input type="text" id="searchInput" class="search-box" placeholder="Search by user ID or email..." onkeyup="filterTable()">
                 <div class="filter-buttons">
                     <button class="filter-btn active" onclick="filterTable('all')">All</button>
                     <button class="filter-btn" onclick="filterTable('active')">Active</button>
@@ -884,8 +884,8 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
             
             <div class="last-updated">
                 Last updated: ${now.toLocaleString()} | 
-                <a href="#" onclick="location.reload()">🔄 Refresh</a> | 
-                <a href="/api/check-expirations" target="_blank">⏰ Check Expirations</a>
+                <a href="#" onclick="location.reload()">Refresh</a> | 
+                <a href="/api/check-expirations" target="_blank">Check Expirations</a>
             </div>
         </div>
 
@@ -941,13 +941,13 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     const result = await response.json();
                     
                     if (result.success) {
-                        showNotification('✅ Subscription extended by ' + days + ' days!');
+                        showNotification('Subscription extended by ' + days + ' days!');
                         setTimeout(() => location.reload(), 1000);
                     } else {
-                        showNotification('❌ Error: ' + result.error, 'error');
+                        showNotification('Error: ' + result.error, 'error');
                     }
                 } catch (error) {
-                    showNotification('❌ Network error', 'error');
+                    showNotification('Network error', 'error');
                 }
             }
 
@@ -964,13 +964,13 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     const result = await response.json();
                     
                     if (result.success) {
-                        showNotification('✅ Premium access revoked!');
+                        showNotification('Premium access revoked!');
                         setTimeout(() => location.reload(), 1000);
                     } else {
-                        showNotification('❌ Error: ' + result.error, 'error');
+                        showNotification('Error: ' + result.error, 'error');
                     }
                 } catch (error) {
-                    showNotification('❌ Network error', 'error');
+                    showNotification('Network error', 'error');
                 }
             }
 
@@ -986,10 +986,10 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
                     if (result.success) {
                         window.location.href = '/api/admin/login';
                     } else {
-                        showNotification('❌ Logout failed', 'error');
+                        showNotification('Logout failed', 'error');
                     }
                 } catch (error) {
-                    showNotification('❌ Network error', 'error');
+                    showNotification('Network error', 'error');
                 }
             }
 
@@ -1003,7 +1003,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     res.send(html);
     
   } catch (error) {
-    console.error('❌ Dashboard error:', error);
+    console.error('Dashboard error:', error);
     res.status(500).send('<h1>Error loading dashboard</h1><p>Please try again later.</p>');
   }
 });
@@ -1015,10 +1015,9 @@ app.get('/api/health', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📋 Webhook endpoint: http://localhost:3000/api/webhook`);
-  console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
-  console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
-  console.log(`🔐 Admin login: http://localhost:3000/api/admin/login`);
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Webhook endpoint: http://localhost:3000/api/webhook`);
+  console.log(`Expiration check: http://localhost:3000/api/check-expirations`);
+  console.log(`Admin dashboard: http://localhost:3000/api/admin/dashboard`);
+  console.log(`Admin login: http://localhost:3000/api/admin/login`);
 });
-
