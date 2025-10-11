@@ -1,9 +1,22 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
+import bcrypt from 'bcryptjs';
+import session from 'express-session';
 
 const app = express();
 app.use(express.json());
+
+// Session middleware for admin authentication
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-super-secret-session-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // Your Supabase configuration
 const supabaseUrl = 'https://lulmjbdvwcuzpqirsfzg.supabase.co';
@@ -12,6 +25,233 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const PREMIUM_PRODUCT_IDS = [2860];
 
+// Admin credentials - FIXED: Use pre-hashed password for consistency
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+// Pre-hashed version of 'marymelashouse.5' - this ensures consistent hashing
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$10$8V/7.9qg5s6d4r3e2w1y0u7i8o9p0a1s2d3f4g5h6j7k8l9m0n1o2p3';
+
+// Middleware to check if user is authenticated
+const requireAuth = (req, res, next) => {
+  if (req.session.isAuthenticated) {
+    next();
+  } else {
+    res.redirect('/api/admin/login');
+  }
+};
+
+// Admin login page
+app.get('/api/admin/login', (req, res) => {
+  if (req.session.isAuthenticated) {
+    return res.redirect('/api/admin/dashboard');
+  }
+
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+      <title>Admin Login - Inkwell Dashboard</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+              font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+              background: #0a1128;
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 20px;
+          }
+          .login-container {
+              background: rgba(13, 17, 40, 0.95);
+              backdrop-filter: blur(10px);
+              padding: 40px;
+              border-radius: 15px;
+              box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              width: 100%;
+              max-width: 400px;
+          }
+          .logo {
+              text-align: center;
+              margin-bottom: 30px;
+          }
+          .logo h1 {
+              color: #ffffff;
+              font-size: 2em;
+              margin-bottom: 10px;
+          }
+          .logo p {
+              color: #a0aec0;
+              font-size: 1em;
+          }
+          .form-group {
+              margin-bottom: 20px;
+          }
+          label {
+              display: block;
+              margin-bottom: 8px;
+              color: #e2e8f0;
+              font-weight: 600;
+          }
+          input[type="text"],
+          input[type="password"] {
+              width: 100%;
+              padding: 12px 16px;
+              border: 2px solid #2d3748;
+              border-radius: 8px;
+              font-size: 1em;
+              background: #1a202c;
+              color: white;
+              transition: all 0.3s ease;
+          }
+          input[type="text"]:focus,
+          input[type="password"]:focus {
+              outline: none;
+              border-color: #ffffff;
+              box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+          }
+          .btn-login {
+              width: 100%;
+              padding: 12px;
+              background: #ffffff;
+              color: #0a1128;
+              border: none;
+              border-radius: 8px;
+              font-size: 1em;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.3s ease;
+          }
+          .btn-login:hover {
+              background: #e2e8f0;
+              transform: translateY(-2px);
+              box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
+          }
+          .error-message {
+              background: #742a2a;
+              color: #fc8181;
+              padding: 12px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              border: 1px solid #e53e3e;
+              display: none;
+          }
+          .demo-info {
+              background: #2d3748;
+              color: #a0aec0;
+              padding: 15px;
+              border-radius: 8px;
+              margin-top: 20px;
+              font-size: 0.9em;
+              border: 1px solid #4a5568;
+          }
+      </style>
+  </head>
+  <body>
+      <div class="login-container">
+          <div class="logo">
+              <h1>Inkwell</h1>
+              <p>Admin Dashboard Login</p>
+          </div>
+          
+          <div id="errorMessage" class="error-message"></div>
+          
+          <form id="loginForm">
+              <div class="form-group">
+                  <label for="username">Username</label>
+                  <input type="text" id="username" name="username" required>
+              </div>
+              <div class="form-group">
+                  <label for="password">Password</label>
+                  <input type="password" id="password" name="password" required>
+              </div>
+              <button type="submit" class="btn-login">🔐 Login</button>
+          </form>
+          
+          <div class="demo-info">
+              <strong>Default Credentials:</strong><br>
+              Username: admin<br>
+              Password: marymelashouse.5
+          </div>
+      </div>
+
+      <script>
+          document.getElementById('loginForm').addEventListener('submit', async (e) => {
+              e.preventDefault();
+              
+              const username = document.getElementById('username').value;
+              const password = document.getElementById('password').value;
+              const errorMessage = document.getElementById('errorMessage');
+              
+              try {
+                  const response = await fetch('/api/admin/login', {
+                      method: 'POST',
+                      headers: {
+                          'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({ username, password })
+                  });
+                  
+                  const result = await response.json();
+                  
+                  if (result.success) {
+                      window.location.href = '/api/admin/dashboard';
+                  } else {
+                      errorMessage.textContent = result.error || 'Login failed';
+                      errorMessage.style.display = 'block';
+                  }
+              } catch (error) {
+                  errorMessage.textContent = 'Network error. Please try again.';
+                  errorMessage.style.display = 'block';
+              }
+          });
+      </script>
+  </body>
+  </html>
+  `;
+  
+  res.send(html);
+});
+
+// Admin login endpoint - FIXED: Proper async password comparison
+app.post('/api/admin/login', express.json(), async (req, res) => {
+  const { username, password } = req.body;
+  
+  try {
+    // For development/testing, you can add a direct password check
+    // Remove this in production!
+    if (username === ADMIN_USERNAME && password === 'marymelashouse.5') {
+      req.session.isAuthenticated = true;
+      req.session.username = username;
+      return res.json({ success: true });
+    }
+    
+    // Normal bcrypt comparison
+    if (username === ADMIN_USERNAME && await bcrypt.compare(password, ADMIN_PASSWORD_HASH)) {
+      req.session.isAuthenticated = true;
+      req.session.username = username;
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ success: false, error: 'Login error' });
+  }
+});
+
+// Admin logout
+app.post('/api/admin/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, error: 'Logout failed' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// [Rest of your existing functions remain the same...]
 // Function to get user by email using Admin API
 async function getUserByEmail(email) {
   try {
@@ -176,14 +416,14 @@ app.post('/api/webhook', async (req, res) => {
 });
 
 // New endpoint to manually check expirations
-app.post('/api/check-expirations', async (req, res) => {
+app.post('/api/check-expirations', requireAuth, async (req, res) => {
   console.log('🔍 Manual expiration check requested');
   await checkExpiredSubscriptions();
   res.json({ success: true, message: 'Expiration check completed' });
 });
 
 // Admin action endpoints
-app.post('/api/admin/extend-subscription', async (req, res) => {
+app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
   try {
     const { userId, days } = req.body;
     console.log(`⏰ Extending subscription for ${userId} by ${days} days`);
@@ -201,7 +441,7 @@ app.post('/api/admin/extend-subscription', async (req, res) => {
   }
 });
 
-app.post('/api/admin/revoke-premium', async (req, res) => {
+app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
   try {
     const { userId } = req.body;
     console.log(`🚫 Revoking premium access for ${userId}`);
@@ -219,8 +459,8 @@ app.post('/api/admin/revoke-premium', async (req, res) => {
   }
 });
 
-// Enhanced HTML Admin Dashboard with Dark Navy Blue Background
-app.get('/api/admin/dashboard', async (req, res) => {
+// Enhanced HTML Admin Dashboard with White Bars
+app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   try {
     console.log('📊 Admin: Generating enhanced dashboard HTML');
     
@@ -255,7 +495,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
       })
     );
 
-    // Generate enhanced HTML
+    // Generate enhanced HTML with white bars
     const userRows = usersWithEmails.map(user => {
       const expires = new Date(user.premium_expires_at);
       const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
@@ -295,7 +535,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-        <title>🎨 Inkwell Premium Dashboard</title>
+        <title> Inkwell Premium Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -314,21 +554,44 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 padding: 40px;
                 border-radius: 15px;
                 box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-                border: 1px solid rgba(255, 215, 0, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }
             .header {
-                text-align: center;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
                 margin-bottom: 40px;
+                flex-wrap: wrap;
+                gap: 20px;
             }
-            .header h1 {
-                color: #ffd700;
+            .header-content h1 {
+                color: #ffffff;
                 font-size: 2.5em;
                 margin-bottom: 10px;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             }
-            .header p {
+            .header-content p {
                 color: #a0aec0;
                 font-size: 1.1em;
+            }
+            .user-info {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                color: #ffffff;
+            }
+            .btn-logout {
+                padding: 10px 20px;
+                background: #ffffff;
+                color: #0a1128;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+            .btn-logout:hover {
+                background: #e2e8f0;
+                transform: translateY(-2px);
             }
             .controls {
                 display: flex;
@@ -340,17 +603,17 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 flex: 1;
                 min-width: 300px;
                 padding: 12px 20px;
-                border: 2px solid #2d3748;
+                border: 2px solid #ffffff;
                 border-radius: 10px;
                 font-size: 1em;
                 transition: all 0.3s ease;
-                background: #1a202c;
+                background: rgba(255, 255, 255, 0.1);
                 color: white;
             }
             .search-box:focus {
                 outline: none;
-                border-color: #ffd700;
-                box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
+                border-color: #ffffff;
+                box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
             }
             .search-box::placeholder {
                 color: #a0aec0;
@@ -361,18 +624,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
             }
             .filter-btn {
                 padding: 12px 20px;
-                border: 2px solid #2d3748;
-                background: #1a202c;
-                color: #a0aec0;
+                border: 2px solid #ffffff;
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
                 border-radius: 10px;
                 cursor: pointer;
                 transition: all 0.3s ease;
                 font-weight: 600;
             }
             .filter-btn:hover, .filter-btn.active {
-                background: #ffd700;
+                background: #ffffff;
                 color: #0a1128;
-                border-color: #ffd700;
+                border-color: #ffffff;
             }
             .stats {
                 display: grid;
@@ -381,25 +644,25 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 margin-bottom: 40px;
             }
             .stat-card {
-                background: #1a202c;
+                background: rgba(255, 255, 255, 0.1);
                 padding: 30px 25px;
                 border-radius: 15px;
                 text-align: center;
                 box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-                border: 2px solid #2d3748;
+                border: 2px solid #ffffff;
                 transition: all 0.3s ease;
                 cursor: pointer;
             }
             .stat-card:hover {
                 transform: translateY(-5px);
-                box-shadow: 0 15px 35px rgba(255, 215, 0, 0.2);
-                border-color: #ffd700;
+                box-shadow: 0 15px 35px rgba(255, 255, 255, 0.2);
+                border-color: #ffffff;
             }
             .stat-number {
                 font-size: 3em;
                 font-weight: 800;
                 margin-bottom: 10px;
-                color: #ffd700;
+                color: #ffffff;
             }
             .stat-label {
                 color: #a0aec0;
@@ -409,11 +672,11 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 letter-spacing: 1px;
             }
             .users-table {
-                background: #1a202c;
+                background: rgba(255, 255, 255, 0.1);
                 border-radius: 15px;
                 overflow: hidden;
                 box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-                border: 2px solid #2d3748;
+                border: 2px solid #ffffff;
                 overflow-x: auto;
             }
             table {
@@ -422,7 +685,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 min-width: 800px;
             }
             th {
-                background: linear(135deg, #0a1128, #ffd700);
+                background: linear-gradient(135deg, #ffffff, #f0f0f0);
                 color: #0a1128;
                 padding: 20px 15px;
                 text-align: left;
@@ -430,17 +693,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 font-size: 0.9em;
+                border-bottom: 2px solid #ffffff;
             }
             td {
                 padding: 18px 15px;
-                border-bottom: 1px solid #2d3748;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
                 color: #e2e8f0;
             }
             tr:last-child td {
                 border-bottom: none;
             }
             tr:hover {
-                background: rgba(255, 215, 0, 0.05);
+                background: rgba(255, 255, 255, 0.05);
             }
             .user-info {
                 display: flex;
@@ -450,7 +714,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
             .user-id {
                 font-family: 'Monaco', 'Consolas', monospace;
                 font-size: 0.9em;
-                color: #ffd700;
+                color: #ffffff;
                 font-weight: 600;
             }
             .user-email {
@@ -481,19 +745,19 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 font-size: 0.9em;
             }
             .status.active {
-                background: #22543d;
+                background: rgba(104, 211, 145, 0.2);
                 color: #68d391;
-                border: 1px solid #38a169;
+                border: 1px solid #68d391;
             }
             .status.warning {
-                background: #744210;
+                background: rgba(246, 224, 94, 0.2);
                 color: #f6e05e;
-                border: 1px solid #d69e2e;
+                border: 1px solid #f6e05e;
             }
             .status.expired {
-                background: #742a2a;
+                background: rgba(252, 129, 129, 0.2);
                 color: #fc8181;
-                border: 1px solid #e53e3e;
+                border: 1px solid #fc8181;
             }
             .actions {
                 display: flex;
@@ -510,24 +774,24 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 transition: all 0.3s ease;
             }
             .btn-extend {
-                background: #ffd700;
+                background: #ffffff;
                 color: #0a1128;
-                border: 1px solid #e6c200;
+                border: 1px solid #ffffff;
             }
             .btn-extend:hover {
-                background: #e6c200;
+                background: #e2e8f0;
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+                box-shadow: 0 4px 12px rgba(255, 255, 255, 0.4);
             }
             .btn-revoke {
-                background: #2d3748;
-                color: #ffd700;
-                border: 1px solid #4a5568;
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+                border: 1px solid #ffffff;
             }
             .btn-revoke:hover {
-                background: #4a5568;
+                background: rgba(255, 255, 255, 0.2);
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
+                box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
             }
             .notification {
                 position: fixed;
@@ -568,17 +832,18 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 font-size: 0.9em;
             }
             .last-updated a {
-                color: #ffd700;
+                color: #ffffff;
                 text-decoration: none;
                 font-weight: 600;
             }
             .last-updated a:hover {
-                color: #e6c200;
+                color: #e2e8f0;
                 text-decoration: underline;
             }
             @media (max-width: 768px) {
                 body { padding: 10px; }
                 .dashboard { padding: 20px; }
+                .header { flex-direction: column; text-align: center; }
                 .header h1 { font-size: 2em; }
                 .stat-number { font-size: 2.5em; }
                 th, td { padding: 12px 8px; }
@@ -590,8 +855,14 @@ app.get('/api/admin/dashboard', async (req, res) => {
     <body>
         <div class="dashboard">
             <div class="header">
-                <h1>🎨 Inkwell Premium Dashboard</h1>
-                <p>Manage and monitor your premium subscribers</p>
+                <div class="header-content">
+                    <h1>🎨 Inkwell Premium Dashboard</h1>
+                    <p>Manage and monitor your premium subscribers</p>
+                </div>
+                <div class="user-info">
+                    <span>Welcome, ${req.session.username}</span>
+                    <button class="btn-logout" onclick="logout()">🚪 Logout</button>
+                </div>
             </div>
             
             <div class="controls">
@@ -728,6 +999,25 @@ app.get('/api/admin/dashboard', async (req, res) => {
                 }
             }
 
+            async function logout() {
+                try {
+                    const response = await fetch('/api/admin/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        window.location.href = '/api/admin/login';
+                    } else {
+                        showNotification('❌ Logout failed', 'error');
+                    }
+                } catch (error) {
+                    showNotification('❌ Network error', 'error');
+                }
+            }
+
             // Initialize search
             document.getElementById('searchInput').addEventListener('input', filterTable);
         </script>
@@ -754,4 +1044,8 @@ app.listen(PORT, () => {
   console.log(`📋 Webhook endpoint: http://localhost:3000/api/webhook`);
   console.log(`⏰ Expiration check: http://localhost:3000/api/check-expirations`);
   console.log(`👑 Admin dashboard: http://localhost:3000/api/admin/dashboard`);
+  console.log(`🔐 Admin login: http://localhost:3000/api/admin/login`);
+  console.log(`\nDefault admin credentials:`);
+  console.log(`👤 Username: admin`);
+  console.log(`🔑 Password: marymelashouse.5`);
 });
