@@ -2,7 +2,9 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 import session from 'express-session';
-import MemoryStore from 'memorystore';
+import memorystore from 'memorystore';
+
+const MemoryStore = memorystore(session);
 
 const app = express();
 app.use(express.json());
@@ -12,7 +14,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'your-super-secret-session-key-change-in-production',
   resave: false,
   saveUninitialized: false,
-  store: new (MemoryStore(session))({
+  store: new MemoryStore({
     checkPeriod: 86400000 // prune expired entries every 24h
   }),
   cookie: {
@@ -301,9 +303,6 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
           return res.status(500).json({ success: false, error: 'Session error' });
         }
         console.log('Session saved successfully, user authenticated');
-        
-        // Set cookie headers explicitly for Vercel
-        res.setHeader('Set-Cookie', req.session.cookie.serialize('connect.sid', req.sessionID));
         
         res.json({ 
           success: true, 
