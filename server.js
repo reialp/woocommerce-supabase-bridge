@@ -1,8 +1,8 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
-import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
+import crypto from 'crypto';
 
 const app = express();
 app.use(express.json());
@@ -14,92 +14,75 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const PREMIUM_PRODUCT_IDS = [2860];
 
-// Admin credentials - Using plain text password
+// Admin credentials
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'marymelashouse.5';
-const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key-change-in-production';
+const AUTH_SECRET = process.env.AUTH_SECRET || 'nl4WEU1YgLPzt7vO9Vih5RS3G6NXB0McueaHxQKpF8fk2drDJyqwCAmIjsToZb';
 
-// CORS middleware for all routes
+// Simple authentication middleware
+const requireAuth = (req, res, next) => {
+  try {
+    const authCookie = req.cookies?.admin_auth;
+    if (authCookie) {
+      const [username, token] = authCookie.split(':');
+      const expectedToken = crypto.createHash('sha256').update(username + AUTH_SECRET).digest('hex');
+      
+      if (token === expectedToken && username === ADMIN_USERNAME) {
+        req.user = { username };
+        return next();
+      }
+    }
+  } catch (error) {
+    console.log('Auth error:', error);
+  }
+  
+  console.log('Not authenticated, redirecting to login');
+  res.redirect('/api/admin/login');
+};
+
+// CORS middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
-  const allowedOrigins = [
-    'https://woocommerce-supabase-bridge.vercel.app',
-    'https://woocommerce-supabase-bridge-*.vercel.app',
-    'http://localhost:3000'
-  ];
-  
-  if (allowedOrigins.includes(origin) || origin?.includes('vercel.app') || !origin) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
+  if (origin?.includes('vercel.app') || origin?.includes('localhost')) {
+    res.header('Access-Control-Allow-Origin', origin);
   }
-  
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization, X-Requested-With');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   next();
 });
 
-// JWT Authentication middleware
-const requireAuth = (req, res, next) => {
-  try {
-    const token = req.cookies?.admin_token || req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      console.log('No token found, redirecting to login');
-      return res.redirect('/api/admin/login');
-    }
+// Parse cookies middleware
+app.use((req, res, next) => {
+  req.cookies = cookie.parse(req.headers.cookie || '');
+  next();
+});
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    console.log('Invalid token:', error.message);
-    // Clear invalid token
-    res.setHeader('Set-Cookie', cookie.serialize('admin_token', '', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 0,
-      path: '/'
-    }));
-    res.redirect('/api/admin/login');
-  }
-};
-
-// Root route - redirect to admin login
+// Root route
 app.get('/', (req, res) => {
   res.redirect('/api/admin/login');
 });
 
-// Health check endpoint
+// Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    service: 'WooCommerce-Supabase Bridge',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+  res.json({ status: 'OK', service: 'WooCommerce-Supabase Bridge' });
 });
 
-// Admin login page
+// Login page
 app.get('/api/admin/login', (req, res) => {
   // Check if already authenticated
   try {
-    const token = req.cookies?.admin_token;
-    if (token) {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      if (decoded.username === ADMIN_USERNAME) {
-        console.log('Already authenticated, redirecting to dashboard');
+    const authCookie = req.cookies?.admin_auth;
+    if (authCookie) {
+      const [username, token] = authCookie.split(':');
+      const expectedToken = crypto.createHash('sha256').update(username + AUTH_SECRET).digest('hex');
+      
+      if (token === expectedToken && username === ADMIN_USERNAME) {
         return res.redirect('/api/admin/dashboard');
       }
     }
   } catch (error) {
-    // Token is invalid, continue to login page
+    // Continue to login page
   }
 
   const html = `
@@ -108,7 +91,6 @@ app.get('/api/admin/login', (req, res) => {
   <head>
       <title>Admin Login - Inkwell Dashboard</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
       <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { 
@@ -216,11 +198,11 @@ app.get('/api/admin/login', (req, res) => {
           <form id="loginForm">
               <div class="form-group">
                   <label for="username">Username</label>
-                  <input type="text" id="username" name="username" required autocomplete="username">
+                  <input type="text" id="username" name="username" required autocomplete="username" value="admin">
               </div>
               <div class="form-group">
                   <label for="password">Password</label>
-                  <input type="password" id="password" name="password" required autocomplete="current-password">
+                  <input type="password" id="password" name="password" required autocomplete="current-password" value="marymelashouse.5">
               </div>
               <button type="submit" class="btn-login" id="loginButton">Login</button>
           </form>
@@ -276,7 +258,7 @@ app.get('/api/admin/login', (req, res) => {
   res.send(html);
 });
 
-// Admin login endpoint with JWT
+// Login endpoint
 app.post('/api/admin/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
   
@@ -287,23 +269,14 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   }
 
   try {
-    // Check credentials with plain text comparison
-    const isUsernameValid = username === ADMIN_USERNAME;
-    const isPasswordValid = password === ADMIN_PASSWORD;
-    
-    if (isUsernameValid && isPasswordValid) {
-      // Create JWT token
-      const token = jwt.sign(
-        { 
-          username: username,
-          loginTime: new Date().toISOString()
-        },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
+    // Check credentials
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      // Create auth token
+      const authToken = crypto.createHash('sha256').update(username + AUTH_SECRET).digest('hex');
+      const authCookie = `${username}:${authToken}`;
       
-      // Set HTTP-only cookie
-      res.setHeader('Set-Cookie', cookie.serialize('admin_token', token, {
+      // Set cookie
+      res.setHeader('Set-Cookie', cookie.serialize('admin_auth', authCookie, {
         httpOnly: true,
         secure: true,
         sameSite: 'none',
@@ -311,7 +284,7 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
         path: '/'
       }));
       
-      console.log('Login successful, JWT token created');
+      console.log('Login successful');
       res.json({ 
         success: true, 
         message: 'Login successful'
@@ -326,11 +299,11 @@ app.post('/api/admin/login', express.json(), async (req, res) => {
   }
 });
 
-// Admin logout
+// Logout endpoint
 app.post('/api/admin/logout', (req, res) => {
   console.log('Logout requested');
   // Clear the cookie
-  res.setHeader('Set-Cookie', cookie.serialize('admin_token', '', {
+  res.setHeader('Set-Cookie', cookie.serialize('admin_auth', '', {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
@@ -340,7 +313,232 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// [Rest of your functions remain the same - getUserByEmail, checkExpiredSubscriptions, etc.]
+// Dashboard route
+app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
+  try {
+    console.log('Loading dashboard for user:', req.user.username);
+    
+    // Get premium users data
+    const { data: premiumUsers, error } = await supabase
+      .from('user_scripts')
+      .select('*')
+      .eq('is_premium', true)
+      .order('premium_expires_at', { ascending: true });
+
+    if (error) throw error;
+
+    // Calculate stats
+    const now = new Date();
+    const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    
+    const expiringSoon = premiumUsers?.filter(user => {
+      const expires = new Date(user.premium_expires_at);
+      return expires > now && expires < soon;
+    }) || [];
+
+    const expiredButActive = premiumUsers?.filter(user => {
+      const expires = new Date(user.premium_expires_at);
+      return expires < now;
+    }) || [];
+
+    // Get emails for all users
+    const usersWithEmails = await Promise.all(
+      (premiumUsers || []).map(async (user) => {
+        const email = await getUserEmail(user.user_id);
+        return { ...user, email };
+      })
+    );
+
+    // Generate HTML
+    const userRows = usersWithEmails.map(user => {
+      const expires = new Date(user.premium_expires_at);
+      const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+      const status = daysRemaining > 0 ? 'Active' : 'Expired';
+      const statusClass = daysRemaining > 0 ? (daysRemaining <= 7 ? 'warning' : 'active') : 'expired';
+      const statusIcon = daysRemaining > 0 ? (daysRemaining <= 7 ? '!' : '✓') : '✗';
+      
+      return `
+        <tr class="${statusClass}" data-user-id="${user.user_id}" data-days-remaining="${daysRemaining}">
+          <td>
+            <div class="user-info">
+              <div class="user-id">${user.user_id.substring(0, 12)}...</div>
+              <div class="user-email">${user.email}</div>
+            </div>
+          </td>
+          <td><div class="date">${expires.toLocaleDateString()}</div></td>
+          <td><div class="days ${daysRemaining <= 7 ? 'warning-text' : ''}">${daysRemaining} days</div></td>
+          <td><div class="status ${statusClass}">${statusIcon} ${status}</div></td>
+          <td>
+            <div class="actions">
+              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 30)" title="Extend 30 days">
+                +30d
+              </button>
+              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 7)" title="Extend 7 days">
+                +7d
+              </button>
+              <button class="btn-revoke" onclick="revokePremium('${user.user_id}')" title="Revoke Premium">
+                Revoke
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Inkwell Premium Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            /* Your existing dashboard CSS styles */
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0a1128; min-height: 100vh; padding: 20px; color: white; }
+            .dashboard { max-width: 1400px; margin: 0 auto; background: rgba(13, 17, 40, 0.95); padding: 40px; border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.2); }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px; }
+            .header-content h1 { color: #ffffff; font-size: 2.5em; margin-bottom: 10px; }
+            .user-info { display: flex; align-items: center; gap: 15px; color: #ffffff; }
+            .btn-logout { padding: 10px 20px; background: #ffffff; color: #0a1128; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 25px; margin-bottom: 40px; }
+            .stat-card { background: rgba(255, 255, 255, 0.1); padding: 30px 25px; border-radius: 15px; text-align: center; border: 2px solid #ffffff; }
+            .stat-number { font-size: 3em; font-weight: 800; margin-bottom: 10px; color: #ffffff; }
+            .users-table { background: rgba(255, 255, 255, 0.1); border-radius: 15px; overflow: hidden; border: 2px solid #ffffff; overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; min-width: 800px; }
+            th { background: linear-gradient(135deg, #ffffff, #f0f0f0); color: #0a1128; padding: 20px 15px; text-align: left; font-weight: 700; }
+            td { padding: 18px 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.2); color: #e2e8f0; }
+            .status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 20px; font-weight: 600; }
+            .status.active { background: rgba(104, 211, 145, 0.2); color: #68d391; border: 1px solid #68d391; }
+            .status.warning { background: rgba(246, 224, 94, 0.2); color: #f6e05e; border: 1px solid #f6e05e; }
+            .status.expired { background: rgba(252, 129, 129, 0.2); color: #fc8181; border: 1px solid #fc8181; }
+            .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+            .btn-extend, .btn-revoke { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8em; font-weight: 600; }
+            .btn-extend { background: #ffffff; color: #0a1128; }
+            .btn-revoke { background: rgba(255, 255, 255, 0.1); color: #ffffff; border: 1px solid #ffffff; }
+        </style>
+    </head>
+    <body>
+        <div class="dashboard">
+            <div class="header">
+                <div class="header-content">
+                    <h1>Inkwell Premium Dashboard</h1>
+                    <p>Manage and monitor your premium subscribers</p>
+                </div>
+                <div class="user-info">
+                    <span>Welcome, ${req.user.username}</span>
+                    <button class="btn-logout" onclick="logout()">Logout</button>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number">${premiumUsers?.length || 0}</div>
+                    <div>Total Premium Users</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${expiringSoon.length}</div>
+                    <div>Expiring Soon (7 days)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${expiredButActive.length}</div>
+                    <div>Expired But Active</div>
+                </div>
+            </div>
+            
+            <div class="users-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User Info</th>
+                            <th>Expires On</th>
+                            <th>Days Left</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${userRows || '<tr><td colspan="5" style="text-align: center; padding: 40px;">No premium users found</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            async function logout() {
+                try {
+                    const response = await fetch('/api/admin/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        window.location.href = '/api/admin/login';
+                    } else {
+                        alert('Logout failed');
+                    }
+                } catch (error) {
+                    alert('Network error');
+                }
+            }
+
+            async function extendSubscription(userId, days) {
+                if (!confirm('Extend subscription for ' + days + ' days?')) return;
+                try {
+                    const response = await fetch('/api/admin/extend-subscription', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ userId, days })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Subscription extended!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('Network error');
+                }
+            }
+
+            async function revokePremium(userId) {
+                if (!confirm('Revoke premium access?')) return;
+                try {
+                    const response = await fetch('/api/admin/revoke-premium', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ userId })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Premium access revoked!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('Network error');
+                }
+            }
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+    
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).send('<h1>Error loading dashboard</h1><p>Please try again later.</p>');
+  }
+});
+
+// [Keep all your existing functions: getUserByEmail, checkExpiredSubscriptions, getUserEmail, extendSubscription, revokePremium, webhook, etc.]
 
 // Function to get user by email using Admin API
 async function getUserByEmail(email) {
@@ -362,45 +560,6 @@ async function getUserByEmail(email) {
   } catch (error) {
     console.error('Error in getUserByEmail:', error);
     throw error;
-  }
-}
-
-// Function to check and revert expired premium users
-async function checkExpiredSubscriptions() {
-  try {
-    const now = new Date().toISOString();
-    console.log('Checking for expired premium subscriptions...');
-    
-    const { data: expiredUsers, error } = await supabase
-      .from('user_scripts')
-      .select('user_id')
-      .eq('is_premium', true)
-      .lt('premium_expires_at', now);
-
-    if (error) {
-      console.error('Error checking expired users:', error);
-      return;
-    }
-
-    if (expiredUsers && expiredUsers.length > 0) {
-      console.log(`Found ${expiredUsers.length} expired subscriptions to revert`);
-      
-      const userIds = expiredUsers.map(user => user.user_id);
-      const { error: updateError } = await supabase
-        .from('user_scripts')
-        .update({ is_premium: false })
-        .in('user_id', userIds);
-
-      if (updateError) {
-        console.error('Error reverting expired users:', updateError);
-      } else {
-        console.log(`Successfully reverted ${userIds.length} users to non-premium`);
-      }
-    } else {
-      console.log('No expired subscriptions found');
-    }
-  } catch (error) {
-    console.error('Error in checkExpiredSubscriptions:', error);
   }
 }
 
@@ -505,13 +664,6 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// New endpoint to manually check expirations
-app.post('/api/check-expirations', requireAuth, async (req, res) => {
-  console.log('Manual expiration check requested');
-  await checkExpiredSubscriptions();
-  res.json({ success: true, message: 'Expiration check completed' });
-});
-
 // Admin action endpoints
 app.post('/api/admin/extend-subscription', requireAuth, async (req, res) => {
   try {
@@ -549,142 +701,7 @@ app.post('/api/admin/revoke-premium', requireAuth, async (req, res) => {
   }
 });
 
-// Enhanced HTML Admin Dashboard
-app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
-  try {
-    console.log('Admin: Generating enhanced dashboard HTML for user:', req.user.username);
-    
-    // Get premium users data
-    const { data: premiumUsers, error } = await supabase
-      .from('user_scripts')
-      .select('*')
-      .eq('is_premium', true)
-      .order('premium_expires_at', { ascending: true });
-
-    if (error) throw error;
-
-    // Calculate stats
-    const now = new Date();
-    const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    
-    const expiringSoon = premiumUsers.filter(user => {
-      const expires = new Date(user.premium_expires_at);
-      return expires > now && expires < soon;
-    });
-
-    const expiredButActive = premiumUsers.filter(user => {
-      const expires = new Date(user.premium_expires_at);
-      return expires < now;
-    });
-
-    // Get emails for all users
-    const usersWithEmails = await Promise.all(
-      premiumUsers.map(async (user) => {
-        const email = await getUserEmail(user.user_id);
-        return { ...user, email };
-      })
-    );
-
-    // Generate enhanced HTML (same as before, just using req.user.username)
-    const userRows = usersWithEmails.map(user => {
-      const expires = new Date(user.premium_expires_at);
-      const daysRemaining = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
-      const status = daysRemaining > 0 ? 'Active' : 'Expired';
-      const statusClass = daysRemaining > 0 ? (daysRemaining <= 7 ? 'warning' : 'active') : 'expired';
-      const statusIcon = daysRemaining > 0 ? (daysRemaining <= 7 ? '!' : '✓') : '✗';
-      
-      return `
-        <tr class="${statusClass}" data-user-id="${user.user_id}" data-days-remaining="${daysRemaining}">
-          <td>
-            <div class="user-info">
-              <div class="user-id">${user.user_id.substring(0, 12)}...</div>
-              <div class="user-email">${user.email}</div>
-            </div>
-          </td>
-          <td><div class="date">${expires.toLocaleDateString()}</div></td>
-          <td><div class="days ${daysRemaining <= 7 ? 'warning-text' : ''}">${daysRemaining} days</div></td>
-          <td><div class="status ${statusClass}">${statusIcon} ${status}</div></td>
-          <td>
-            <div class="actions">
-              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 30)" title="Extend 30 days">
-                +30d
-              </button>
-              <button class="btn-extend" onclick="extendSubscription('${user.user_id}', 7)" title="Extend 7 days">
-                +7d
-              </button>
-              <button class="btn-revoke" onclick="revokePremium('${user.user_id}')" title="Revoke Premium">
-                Revoke
-              </button>
-            </div>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Inkwell Premium Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
-        <style>
-            /* Your existing CSS styles here */
-        </style>
-    </head>
-    <body>
-        <div class="dashboard">
-            <div class="header">
-                <div class="header-content">
-                    <h1>Inkwell Premium Dashboard</h1>
-                    <p>Manage and monitor your premium subscribers</p>
-                </div>
-                <div class="user-info">
-                    <span>Welcome, ${req.user.username}</span>
-                    <button class="btn-logout" onclick="logout()">Logout</button>
-                </div>
-            </div>
-            
-            <!-- Rest of your dashboard HTML -->
-            
-        </div>
-
-        <script>
-            async function logout() {
-                try {
-                    const response = await fetch('/api/admin/logout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include'
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        window.location.href = '/api/admin/login';
-                    } else {
-                        showNotification('Logout failed', 'error');
-                    }
-                } catch (error) {
-                    showNotification('Network error', 'error');
-                }
-            }
-
-            // Your existing JavaScript functions here
-        </script>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
-    
-  } catch (error) {
-    console.error('Dashboard error:', error);
-    res.status(500).send('<h1>Error loading dashboard</h1><p>Please try again later.</p>');
-  }
-});
-
-// Handle 404 for all other routes
+// Handle 404
 app.use('*', (req, res) => {
   if (req.originalUrl.startsWith('/api/')) {
     res.status(404).json({ error: 'API endpoint not found' });
@@ -696,8 +713,4 @@ app.use('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Webhook endpoint: http://localhost:3000/api/webhook`);
-  console.log(`Expiration check: http://localhost:3000/api/check-expirations`);
-  console.log(`Admin dashboard: http://localhost:3000/api/admin/dashboard`);
-  console.log(`Admin login: http://localhost:3000/api/admin/login`);
 });
